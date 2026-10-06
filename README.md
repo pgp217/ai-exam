@@ -9,7 +9,7 @@
 ## 진행 현황
 
 - [x] 1단계: 요인 체계, 문항 은행(객관식 24 · 자기평가 8 · 서술형 3), 채점 기준표, 채점 엔진, 응답 신뢰도, DB 스키마
-- [ ] 2단계: 응시 화면 + 객관식 자동 채점 + 응답 신뢰도 저장
+- [x] 2단계: 응시 화면(안내·동의, 타이머, 문항 이동, 자동 임시 저장, 마감 자동 제출) + 객관식 자동 채점 + 응답 신뢰도 저장
 - [ ] 3단계: 서술형 AI 1차 채점 + 담당자 리뷰·확정
 - [ ] 4단계: 개인 리포트 + 관리자 결과 목록
 - [ ] 5단계: 시험 생성 마법사 + 엑셀 업로드 + 안내문 작성
@@ -24,7 +24,15 @@
 | `src/lib/exam/answer-key.ts` | 정답 키·채점 기준표 (`server-only`, 클라이언트에서 import 하면 빌드 실패) |
 | `src/lib/exam/scoring.ts` | 8단계 등급, 3×3 유형, 요인 점수, 자기평가 차이, 강점·약점, 복습할 장, 동기 내 상위 % |
 | `src/lib/exam/reliability.ts` | 응답 신뢰도 (응답 시간, 일렬 응답, 자기평가 무변별, 붙여넣기, 분량) |
+| `src/lib/attempt/responses.ts` | 응답 검증·병합, 제출 시 객관식 채점과 응답 신뢰도 판정 |
+| `src/lib/attempt/timing.ts` | 응시 기간, 제한 시간 마감(+60초 여유), 응시 시간 계산 |
+| `src/lib/attempt/service.ts` | 응시 흐름(서버 전용): 링크 확인 → 시작 → 임시 저장 → 제출, 저장소 선택 |
+| `src/lib/attempt/supabase-store.ts` · `memory-store.ts` | Supabase(PostgREST) 저장소 · 개발용 메모리 저장소 |
+| `src/app/t/[token]` | 응시 화면 (안내·동의 → 응시 → 제출 완료) |
+| `src/app/api/t/[token]/{start,responses,submit}` | 응시 시작 · 임시 저장(PUT) · 제출 API |
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
+| `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
+| `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
 
 ## 개발
 
@@ -32,16 +40,24 @@
 npm install
 cp .env.example .env.local   # 값 채우기
 npm run dev
-npm test                     # 채점 로직 단위 테스트
+npm test                     # 채점·응시 로직 단위 테스트
 ```
+
+Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가 없으면 `npm run dev` 는 **메모리 저장소**로 동작합니다. 첫 화면에 데모 응시 링크(`/t/demo`, `/t/demo2`, `/t/demo3`)가 나오고, 서버를 다시 켜면 초기화됩니다. `EXAM_STORE=memory|supabase` 로 강제할 수 있고, 프로덕션에서는 키가 없으면 메모리로 넘어가지 않고 오류를 냅니다.
+
+응시 흐름
+- 안내·동의 → 시작하면 `attempts` 생성(1인 1회). 제한 시간은 `시작 + time_limit_min` 과 응시 기간 종료 중 이른 시각입니다.
+- 순서는 자기평가 → 객관식 → 서술형입니다. 자기평가가 객관식을 풀고 난 인상에 끌리지 않도록 먼저 받습니다.
+- 답을 바꾸면 1초 뒤, 문항을 옮길 때, 15초마다, 탭을 떠날 때 바뀐 응답만 저장합니다. 문항별 응답 시간은 화면에 떠 있던 누적 시간이고(다른 탭을 보는 동안은 제외), 서술형 붙여넣기는 한 번이라도 있으면 기록이 남습니다.
+- 제출하거나 시간이 끝나면 객관식 지식 점수와 응답 신뢰도를 계산해 `attempts.reliability`, `results`(status `grading`)에 저장합니다. 마감 + 60초가 지난 요청의 응답은 받지 않고, 마감 뒤 링크를 다시 열면 저장된 응답으로 자동 제출합니다.
 
 ## Supabase 설정
 
-1. SQL Editor 에서 `supabase/migrations/0001_init.sql` 실행
+1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
 2. Authentication 에서 관리자 계정을 만든 뒤 `admins` 테이블에 등록
    ```sql
    insert into public.admins (user_id, name) values ('<auth.users 의 id>', '관리자 이름');
    ```
-3. Vercel 프로젝트 환경 변수에 `.env.example` 의 4개 값 등록 (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY` 는 서버 전용)
+3. Vercel 프로젝트 환경 변수에 `.env.example` 의 값 등록 (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY` 는 서버 전용). 서버 키는 레거시 `service_role` 키(JWT)나 새 Secret key(`sb_secret_...`) 모두 됩니다. Publishable/anon 키로는 응시 API 가 동작하지 않습니다.
 
 접근 모델: 응시자는 로그인 없이 개인별 링크(`access_token`)로 서버를 거쳐서만 DB에 접근하고, `anon` 역할에는 권한이 없습니다. 관리자는 Supabase Auth 로그인 + `admins` 등록이 필요합니다.

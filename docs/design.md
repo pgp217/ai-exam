@@ -1,5 +1,7 @@
-# 신입사원 AI 역량 시험 — 설계안 v0.2
+# 신입사원 AI 역량 시험 — 설계안 v0.3
 
+> v0.3 변경(2단계): 응시 순서를 자기평가 → 객관식 → 서술형으로 정함. 제출 시 객관식만 채점된 `results`(status `grading`)를 먼저 저장하고, 실전·종합 점수는 서술형 확정 후 채움(`0002_attempt_flow.sql`). 마감은 `시작 + 제한 시간`과 응시 기간 종료 중 이른 시각, 마감 + 60초 이후 응답은 받지 않음.
+>
 > v0.2 변경: 문항·정답·채점 기준표는 DB가 아니라 코드(`src/lib/exam`)를 기준으로 관리한다(`items` 테이블 제외, `admins` 테이블 추가). 문항 원문과 채점 기준표 전체는 `items.ts`, `answer-key.data.ts` 참고.
 
 참고: genai-book 교재(Part 1~5, 부록 E), 에이치닷 역량진단 관리자 화면·결과 리포트 샘플
@@ -104,6 +106,7 @@
 
 **응시자** (로그인 없이 개인별 응시 링크)
 - 안내·동의 → 응시(타이머, 문항 이동, 임시 저장) → 제출 완료 → (공개 시) 리포트
+- 문항 순서: 자기평가 8 → 객관식 24 → 서술형 3 (자기평가를 먼저 받아 시험 문항을 본 인상이 섞이지 않게 함)
 
 ## 8. AI 채점 파이프라인
 
@@ -131,8 +134,8 @@ ai_gradings      (id, response_id, model, prompt_version, criterion_scores jsonb
                   score, rationale, evidence jsonb, raw jsonb, created_at)
 final_gradings   (response_id PK, grader_id, criterion_scores jsonb, score,
                   override_reason, confirmed_at)
-results          (attempt_id PK, factor_scores jsonb, knowledge_score, practice_score,
-                  total, grade, ai_type, cohort_percentile, computed_at)
+results          (attempt_id PK, knowledge_score, practice_score?, total?, grade?, ai_type?,
+                  detail jsonb, status grading|complete, computed_at)  -- ? 는 서술형 확정 전 null
 notice_templates (id, exam_id, channel, subject, body)
 ```
 
