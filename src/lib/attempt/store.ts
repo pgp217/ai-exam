@@ -3,10 +3,10 @@ import "server-only";
 
 import { createMemoryStore, demoDb } from "./memory-store";
 import { createSupabaseStore } from "./supabase-store";
-import type { ExamStore, GradingStore, ReportStore } from "./types";
+import type { ExamAdminStore, ExamStore, GradingStore, ReportStore } from "./types";
 
 // EXAM_STORE=memory | supabase. 지정하지 않으면 Supabase 서버 키가 있을 때 supabase, 없으면 memory(개발 전용).
-type Store = ExamStore & GradingStore & ReportStore;
+type Store = ExamStore & GradingStore & ReportStore & ExamAdminStore;
 const g = globalThis as unknown as { __examStore?: Store };
 
 export function storeMode(): "memory" | "supabase" {

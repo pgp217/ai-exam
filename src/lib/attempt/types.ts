@@ -207,3 +207,59 @@ export interface ReportStore {
   listExams(): Promise<{ id: string; title: string }[]>;
   saveFeedback(attemptId: string, feedback: Feedback): Promise<void>;
 }
+
+// ── 시험·대상자·안내문 관리 (5단계) ─────────────────────
+
+export interface ExamSummary extends ExamRow {
+  candidates: number;
+  started: number; // 응시 시작(응시 중 포함)
+  submitted: number;
+  complete: number;
+}
+
+export interface AdminCandidate {
+  id: string;
+  employee_no: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  department: string | null;
+  cohort: string | null;
+  joined_at: string | null;
+  access_token: string;
+  invited_at: string | null;
+  attemptStatus: AttemptStatus | null;
+}
+
+export interface CandidateUpsert {
+  employee_no: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  department: string | null;
+  cohort: string | null;
+  joined_at: string | null;
+}
+
+export interface NoticeTemplate {
+  channel: "email" | "sms";
+  subject: string | null;
+  body: string;
+  updated_at?: string;
+}
+
+export type ExamPatch = Partial<Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "status">>;
+
+export interface ExamAdminStore {
+  listExamSummaries(): Promise<ExamSummary[]>;
+  getExam(examId: string): Promise<ExamRow | null>;
+  createExam(input: Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "item_set_version">, createdBy: string | null): Promise<string>;
+  updateExam(examId: string, patch: ExamPatch): Promise<void>;
+  listCandidates(examId: string): Promise<AdminCandidate[]>;
+  /** 사번 기준으로 새로 넣거나 정보를 바꾼다. 응시 링크(access_token)는 바뀌지 않는다 */
+  upsertCandidates(examId: string, rows: CandidateUpsert[]): Promise<{ inserted: number; updated: number }>;
+  /** 응시 기록이 있으면 지우지 않고 false */
+  deleteCandidate(examId: string, candidateId: string): Promise<boolean>;
+  getNotices(examId: string): Promise<NoticeTemplate[]>;
+  saveNotice(examId: string, notice: NoticeTemplate): Promise<void>;
+}
