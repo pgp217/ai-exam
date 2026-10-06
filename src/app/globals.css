@@ -24,3 +24,19 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 리포트 차트 색 (데이터 시각화 기본 팔레트 slot 1·2, 다크 모드는 다크 표면용 단계) */
+:root {
+  --viz-actual: #2a78d6; /* 실제 점수 · 내 위치 */
+  --viz-self: #eb6834; /* 자기평가 */
+  --viz-muted: #d4d4d8; /* 다른 사람 분포 */
+  --viz-track: #f4f4f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --viz-actual: #3987e5;
+    --viz-self: #d95926;
+    --viz-muted: #52525b;
+    --viz-track: #27272a;
+  }
+}

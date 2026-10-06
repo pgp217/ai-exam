@@ -45,6 +45,9 @@ export default async function ReviewPage({ params }: PageProps<"/admin/grading/[
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-bold">{candidate.name}</h1>
           <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[attempt.status]}`}>{STATUS_LABELS[attempt.status]}</span>
+          {attempt.status === "complete" && (
+            <Link href={`/admin/results/${attempt.id}`} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">리포트·피드백 보기</Link>
+          )}
         </div>
         <p className="mt-1 text-sm text-zinc-500">
           {[candidate.employee_no, candidate.department, candidate.cohort, review.exam.title].filter(Boolean).join(" · ")}

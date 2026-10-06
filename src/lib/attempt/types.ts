@@ -150,3 +150,59 @@ export interface GradingStore {
   setAttemptStatus(attemptId: string, to: AttemptStatus, from: AttemptStatus[]): Promise<void>;
   updateResults(attemptId: string, update: ResultUpdate): Promise<void>;
 }
+
+// ── 리포트·결과 목록 (4단계) ───────────────────────────
+
+export interface FeedbackAction {
+  title: string;
+  detail: string;
+  chapter: string | null; // 교재 장 id (ch01 ~ ch11)
+}
+
+export interface Feedback {
+  status: "draft" | "approved";
+  summary: string;
+  actions: FeedbackAction[];
+  model: string;
+  generated_at: string;
+  approved_by?: string | null;
+  approved_at?: string | null;
+  stale?: boolean; // 승인 뒤 점수가 바뀌어 다시 생성이 필요함
+  basis: { total: number | null; practice: number | null };
+}
+
+export interface ReportData {
+  attemptId: string;
+  status: AttemptStatus;
+  submittedAt: string | null;
+  durationSec: number | null;
+  reliability: unknown;
+  candidate: CandidateInfo;
+  exam: { id: string; title: string; show_result: boolean };
+  result: { status: "grading" | "complete"; detail: unknown; feedback: Feedback | null } | null;
+}
+
+export interface CohortMember {
+  attemptId: string;
+  total: number;
+  knowledge: number;
+  practice: number;
+  tops: Record<string, number>; // 상위요인 id → 점수
+}
+
+export interface ResultRow {
+  candidateId: string;
+  candidate: CandidateInfo;
+  exam: { id: string; title: string };
+  attempt: { id: string; status: AttemptStatus; submittedAt: string | null; reliability: unknown } | null;
+  result: { status: "grading" | "complete"; total: number | null; grade: string | null; aiType: string | null; knowledge: number; practice: number | null; feedbackStatus: Feedback["status"] | null } | null;
+}
+
+export interface ReportStore {
+  getReport(attemptId: string): Promise<ReportData | null>;
+  /** 같은 시험에서 결과가 확정된 응시자들 */
+  getCohort(examId: string): Promise<CohortMember[]>;
+  listResults(): Promise<ResultRow[]>;
+  listExams(): Promise<{ id: string; title: string }[]>;
+  saveFeedback(attemptId: string, feedback: Feedback): Promise<void>;
+}

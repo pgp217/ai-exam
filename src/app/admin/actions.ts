@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin, signIn, signOut } from "@/lib/admin/auth";
+import { generateFeedback, saveReviewedFeedback } from "@/lib/feedback/service";
 import { confirmGrading, gradeAttemptEssays } from "@/lib/grading/service";
 
 export interface FormState {
@@ -51,4 +52,30 @@ export async function confirmGradingAction(_prev: FormState, form: FormData): Pr
   if (!r.ok) return { ok: false, message: r.error };
   refresh();
   return { ok: true, message: r.complete ? "확정했습니다. 세 문항이 모두 확정되어 결과를 계산했습니다." : "확정했습니다." };
+}
+
+export async function saveFeedbackAction(_prev: FormState, form: FormData): Promise<FormState> {
+  const admin = await requireAdmin();
+  const titles = form.getAll("title").map(String);
+  const details = form.getAll("detail").map(String);
+  const chapters = form.getAll("chapter").map(String);
+  const approve = form.get("intent") === "approve";
+  const r = await saveReviewedFeedback({
+    attemptId: String(form.get("attemptId") ?? ""),
+    adminId: admin.id,
+    summary: String(form.get("summary") ?? ""),
+    actions: titles.map((title, i) => ({ title, detail: details[i] ?? "", chapter: chapters[i] || null })),
+    approve,
+  });
+  if (!r.ok) return { ok: false, message: r.error };
+  refresh();
+  return { ok: true, message: approve ? "승인했습니다. 응시자 리포트에 공개됩니다." : "임시 저장했습니다 (아직 공개되지 않음)." };
+}
+
+export async function regenerateFeedbackAction(_prev: FormState, form: FormData): Promise<FormState> {
+  await requireAdmin();
+  const r = await generateFeedback(String(form.get("attemptId") ?? ""), { force: true });
+  if (!r.ok) return { ok: false, message: r.error };
+  refresh();
+  return { ok: true, message: "새 초안을 만들었습니다. 확인 후 승인해 주세요." };
 }

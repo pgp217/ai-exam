@@ -11,7 +11,7 @@
 - [x] 1단계: 요인 체계, 문항 은행(객관식 24 · 자기평가 8 · 서술형 3), 채점 기준표, 채점 엔진, 응답 신뢰도, DB 스키마
 - [x] 2단계: 응시 화면(안내·동의, 타이머, 문항 이동, 자동 임시 저장, 마감 자동 제출) + 객관식 자동 채점 + 응답 신뢰도 저장
 - [x] 3단계: 서술형 AI 1차 채점(Claude API, 근거 인용 검증) + 관리자 로그인 + 담당자 리뷰·확정 + 결과 계산 + AI-담당자 일치율
-- [ ] 4단계: 개인 리포트 + 관리자 결과 목록
+- [x] 4단계: 개인 리포트(동기 분포·상위 %, 유형, 자기평가 비교, AI 성장 피드백 + 담당자 승인) + 관리자 결과 목록(필터)
 - [ ] 5단계: 시험 생성 마법사 + 엑셀 업로드 + 안내문 작성
 - [ ] 6단계: 정합성 점검, 배포, 데모 링크
 
@@ -36,8 +36,15 @@
 | `src/lib/admin/` | 관리자 로그인(Supabase Auth), 토큰 서명 검증(JWKS), 세션 쿠키 |
 | `src/proxy.ts` | 관리자 화면 요청 전 만료가 가까운 로그인 토큰 갱신 |
 | `src/app/admin` | 관리자 로그인, 서술형 채점 목록, 응시자별 채점 리뷰 |
+| `src/lib/report/` | 리포트 계산(동기 분포·상위 %, 비교 인원 5명 미만이면 숨김), 결과 목록 필터 |
+| `src/lib/feedback/` | 성장 피드백: 프롬프트, Claude 호출, 결과 확정 시 초안 생성, 담당자 승인 |
+| `src/lib/exam/simulate.ts` | 가상 응시자 생성 (결정적 난수) |
+| `src/components/report/report.tsx` | 개인 리포트 화면 (응시자·관리자 공용) |
+| `src/app/admin/(console)/results` | 결과 목록(필터), 개인 리포트 + 피드백 확인·승인 |
+| `scripts/seed-cohort.mts` | 시험에 가상 동기 응시자를 넣거나(`--count`) 지우는(`--remove`) 스크립트 |
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
 | `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
+| `supabase/migrations/0003_report_feedback.sql` | `results.feedback` (성장 피드백 저장) |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
 
 ## 개발
@@ -46,7 +53,7 @@
 npm install
 cp .env.example .env.local   # 값 채우기
 npm run dev
-npm test                     # 채점·응시 로직 단위 테스트
+npm test                     # 단위 테스트 (Supabase 통합 테스트는 STORE_IT_* 환경 변수가 있을 때만)
 ```
 
 Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가 없으면 `npm run dev` 는 **메모리 저장소**로 동작합니다. 첫 화면에 데모 응시 링크(`/t/demo`, `/t/demo2`, `/t/demo3`)가 나오고, 서버를 다시 켜면 초기화됩니다. `EXAM_STORE=memory|supabase` 로 강제할 수 있고, 프로덕션에서는 키가 없으면 메모리로 넘어가지 않고 오류를 냅니다.
@@ -66,9 +73,16 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 - 담당자는 리뷰 화면에서 기준별 점수를 확정합니다. AI 점수와 다르게 확정하면 사유가 필수입니다. 세 문항이 모두 확정되면 실전·종합 점수, 등급, 유형을 계산해 `results`(status `complete`)에 저장합니다. 확정 점수를 고치면 결과도 다시 계산합니다.
 - 채점 목록 상단에 AI-담당자 일치율(확정된 기준 중 AI 점수와 같은 비율)을 보여 줍니다.
 
+개인 리포트와 결과 목록
+- 세 문항이 모두 확정되면 결과 공개 시험(`show_result`)의 응시자는 같은 응시 링크에서 리포트를 봅니다: 종합 등급·점수, 3×3 유형, 강점·보완할 점, 역량별 점수와 동기 분포, 자기평가 vs 실제, 성장 피드백, 복습할 장.
+- 동기 비교(상위 %, 분포)는 같은 시험에서 결과가 확정된 인원이 5명 이상일 때만 보여 줍니다.
+- 결과가 확정되면 Claude 가 성장 피드백 초안(요약 + 실천 제안 3개)을 만듭니다. 이름·사번은 보내지 않습니다. 담당자가 관리자 리포트 화면에서 고치고 **승인하고 공개**를 눌러야 응시자에게 보입니다. 승인 뒤 확정 점수가 바뀌면 "다시 생성 권장"으로 표시합니다.
+- 관리자 결과 목록(`/admin/results`)은 미응시자까지 포함하고 시험·이름/사번·소속·기수·상태·응답 신뢰도·등급으로 거를 수 있습니다.
+- 동기 분포를 데모로 보려면 `npx tsx scripts/seed-cohort.mts --exam <exam_id> --count 30` 으로 가상 응시자(사번 `SIM-`)를 넣고, `--remove` 로 지웁니다. 메모리 저장소 모드에는 가상 응시자 30명이 들어 있습니다.
+
 ## Supabase 설정
 
-1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
+1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql`, `0003_report_feedback.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
 2. Authentication 에서 관리자 계정을 만든 뒤(Auto Confirm User 체크) `admins` 테이블에 등록
    ```sql
    insert into public.admins (user_id, name) values ('<auth.users 의 id>', '관리자 이름');

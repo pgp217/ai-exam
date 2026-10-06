@@ -8,20 +8,12 @@ import { essayScoreFromCriteria } from "../exam/scoring";
 import { missingEssayRows, scoreSubmission } from "../attempt/responses";
 import { getStore } from "../attempt/store";
 import type { AiGradingRow, NewAiGrading, ReviewAttempt } from "../attempt/types";
+import { onResultComplete } from "../feedback/service";
 import { GRADER_MODEL, gradeWithClaude } from "./claude";
+import { graderMode } from "./mode";
 import {
   FAKE_MODEL, PROMPT_VERSION, differsFromAi, fakeGrade, gradeEmpty, normalizeOutput, parseCriterionScores,
 } from "./grade";
-
-// ── 채점기 선택 ─────────────────────────────────────────
-// AI_GRADER=claude | fake. 지정하지 않으면 ANTHROPIC_API_KEY 가 있을 때 claude,
-// 없으면 개발 환경에서만 fake(가짜 채점). 프로덕션에서는 가짜 채점으로 넘어가지 않는다.
-export function graderMode(): "claude" | "fake" | "none" {
-  const explicit = process.env.AI_GRADER;
-  if (explicit === "claude" || explicit === "fake") return explicit;
-  if (process.env.ANTHROPIC_API_KEY) return "claude";
-  return process.env.NODE_ENV === "production" ? "none" : "fake";
-}
 
 const textOf = (r: ReviewAttempt["responses"][number] | undefined) => (r && "text" in r.answer ? r.answer.text : "");
 
@@ -176,8 +168,13 @@ export async function recomputeResult(attemptId: string): Promise<boolean> {
     detail,
     status: complete ? "complete" : "grading",
   });
-  if (complete) await store.setAttemptStatus(attemptId, "complete", ["submitted", "grading"]);
+  if (complete) {
+    await store.setAttemptStatus(attemptId, "complete", ["submitted", "grading"]);
+    // 개인 리포트의 AI 피드백 초안을 만들거나, 승인된 피드백이면 점수 변경을 표시한다
+    const report = await store.getReport(attemptId);
+    await onResultComplete(attemptId, detail, report?.result?.feedback ?? null);
+  }
   return complete;
 }
 
-export { GRADER_MODEL };
+export { GRADER_MODEL, graderMode };

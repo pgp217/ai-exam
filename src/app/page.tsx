@@ -26,7 +26,10 @@ export default function Home() {
           </div>
         ))}
       </section>
-      <p className="text-sm text-zinc-500">응시자는 개인별 응시 링크(/t/…)로 들어옵니다. 관리자 화면은 다음 단계에서 추가됩니다.</p>
+      <p className="text-sm text-zinc-500">
+        응시자는 안내받은 개인별 응시 링크로 들어옵니다. 담당자는{" "}
+        <a href="/admin/login" className="underline">관리자 로그인</a>으로 서술형 채점을 검토합니다.
+      </p>
       {demo && (
         <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
           개발용 메모리 저장소로 실행 중입니다. 데모 응시 링크:{" "}
