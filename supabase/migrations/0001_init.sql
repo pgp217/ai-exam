@@ -8,7 +8,9 @@
 --             서버는 service_role 키로 DB에 접근한다. anon 역할에는 아무 권한도 주지 않는다.
 -- 문항·정답·채점 기준표는 앱 코드(src/lib/exam)에 있고, DB에는 item_id 와 item_set_version 만 저장한다.
 
-create extension if not exists pgcrypto;
+-- Supabase 는 pgcrypto 를 extensions 스키마에 미리 설치해 둔다 (이미 있으면 아무 일도 하지 않음)
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ── 관리자 ─────────────────────────────────────────────
 create table public.admins (
@@ -49,7 +51,7 @@ create table public.candidates (
   department text,
   cohort text, -- 입사 기수 (예: 2026-하반기)
   joined_at date,
-  access_token text not null unique default encode(gen_random_bytes(24), 'hex'),
+  access_token text not null unique default encode(extensions.gen_random_bytes(24), 'hex'),
   invited_at timestamptz,
   created_at timestamptz not null default now(),
   unique (exam_id, employee_no)
