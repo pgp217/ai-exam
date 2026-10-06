@@ -1,7 +1,15 @@
 // Supabase(PostgREST) 저장소. 서버 전용 키로 RLS 를 우회해 접근하므로 서버에서만 쓴다.
+// 관리자 기능은 이 저장소를 쓰기 전에 서버 코드에서 관리자 여부를 반드시 확인한다.
 import "server-only";
 
-import type { AttemptRow, ExamRow, ExamStore, ResponseRow, Session, SubmitInput } from "./types";
+import { ESSAY_ITEMS } from "../exam/items";
+import type {
+  AiGradingRow, AttemptRow, CandidateInfo, ExamRow, ExamStore, FinalGradingRow, GradingStore,
+  QueueRow, ResponseRow, ReviewAttempt, Session, SubmitInput,
+} from "./types";
+
+const REQUEST_TIMEOUT_MS = 15_000;
+const ESSAY_FILTER = `in.(${ESSAY_ITEMS.map((e) => e.id).join(",")})`;
 
 export class SupabaseError extends Error {
   constructor(
@@ -13,7 +21,18 @@ export class SupabaseError extends Error {
   }
 }
 
-export function createSupabaseStore(url: string, key: string): ExamStore {
+type AiRowRaw = Omit<AiGradingRow, "reasons"> & { raw?: { reasons?: Record<string, string> } | null };
+
+function toAiRow(r: AiRowRaw): AiGradingRow {
+  const { raw, ...rest } = r;
+  return { ...rest, score: Number(rest.score), reasons: raw?.reasons ?? {} };
+}
+
+function one<T>(v: T | T[] | null | undefined): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
+}
+
+export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore {
   const base = url.replace(/\/+$/, "") + "/rest/v1";
   const headers: Record<string, string> = { apikey: key, "Content-Type": "application/json", Accept: "application/json" };
   // 레거시 service_role 키(JWT)는 Authorization 에도 넣는다. 새 Secret key(sb_secret_...)는 apikey 만 쓴다.
@@ -25,6 +44,8 @@ export function createSupabaseStore(url: string, key: string): ExamStore {
       headers: init.prefer ? { ...headers, Prefer: init.prefer } : headers,
       body: init.body === undefined ? undefined : JSON.stringify(init.body),
       cache: "no-store",
+      // signal 을 넘기면 Next.js 가 렌더링 중 같은 GET 요청을 메모이즈하지 않는다 (쓰기 직후 다시 읽어도 최신 값)
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     const text = await res.text();
     const data = text ? JSON.parse(text) : null;
@@ -42,7 +63,10 @@ export function createSupabaseStore(url: string, key: string): ExamStore {
     attempt: (AttemptRow & { responses: ResponseRow[] }) | (AttemptRow & { responses: ResponseRow[] })[] | null;
   };
 
+  const CANDIDATE_INFO = "name,employee_no,department,cohort";
+
   return {
+    // ── 응시 ─────────────────────────────────────────
     async findSession(token) {
       const select = [
         "id,name",
@@ -52,7 +76,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore {
       const rows = await rest<CandidateJoin[]>(`/candidates?access_token=eq.${encodeURIComponent(token)}&select=${select}`);
       const c = rows[0];
       if (!c) return null;
-      const a = Array.isArray(c.attempt) ? (c.attempt[0] ?? null) : c.attempt;
+      const a = one(c.attempt);
       const session: Session = {
         candidate: { id: c.id, name: c.name },
         exam: c.exam,
@@ -88,6 +112,134 @@ export function createSupabaseStore(url: string, key: string): ExamStore {
           p_knowledge_score: input.knowledgeScore,
           p_detail: input.detail,
         },
+      });
+    },
+
+    // ── 채점 ─────────────────────────────────────────
+    async isAdmin(userId) {
+      const rows = await rest<{ name: string }[]>(`/admins?user_id=eq.${encodeURIComponent(userId)}&select=name`);
+      return rows[0] ?? null;
+    },
+
+    async listQueue() {
+      type Row = {
+        id: string;
+        status: AttemptRow["status"];
+        submitted_at: string | null;
+        reliability: unknown;
+        candidate: CandidateInfo & { exam: { title: string } };
+        responses: {
+          id: string;
+          item_id: string;
+          ai_gradings: { id: string; criterion_scores: Record<string, number>; score: number; created_at: string }[];
+          final_gradings: Pick<FinalGradingRow, "criterion_scores" | "score" | "ai_grading_id"> | Pick<FinalGradingRow, "criterion_scores" | "score" | "ai_grading_id">[] | null;
+        }[];
+      };
+      const select = [
+        "id,status,submitted_at,reliability",
+        `candidate:candidates(${CANDIDATE_INFO},exam:exams(title))`,
+        "responses(id,item_id,ai_gradings(id,criterion_scores,score,created_at),final_gradings(criterion_scores,score,ai_grading_id))",
+      ].join(",");
+      const rows = await rest<Row[]>(
+        `/attempts?status=neq.in_progress&select=${select}&responses.item_id=${ESSAY_FILTER}&order=submitted_at.desc`,
+      );
+      return rows.map((r): QueueRow => {
+        const aiGradingsById: Record<string, Record<string, number>> = {};
+        const essays = ESSAY_ITEMS.map((e) => {
+          const resp = r.responses.find((x) => x.item_id === e.id);
+          const ais = [...(resp?.ai_gradings ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
+          ais.forEach((g) => (aiGradingsById[g.id] = g.criterion_scores));
+          const latest = ais[0];
+          const final = one(resp?.final_gradings);
+          return {
+            itemId: e.id,
+            responseId: resp?.id ?? null,
+            ai: latest ? { id: latest.id, criterion_scores: latest.criterion_scores, score: Number(latest.score) } : null,
+            final: final ? { ...final, score: Number(final.score) } : null,
+          };
+        });
+        const { exam, ...candidate } = r.candidate;
+        return { attemptId: r.id, status: r.status, submittedAt: r.submitted_at, reliability: r.reliability, candidate, examTitle: exam.title, essays, aiGradingsById };
+      });
+    },
+
+    async getReviewAttempt(attemptId) {
+      type Row = AttemptRow & {
+        reliability: unknown;
+        candidate: CandidateInfo & { exam: { id: string; title: string } };
+        result: { knowledge_score: number; status: "grading" | "complete" } | { knowledge_score: number; status: "grading" | "complete" }[] | null;
+        responses: (ResponseRow & {
+          id: string;
+          ai_gradings: AiRowRaw[];
+          final_gradings: FinalGradingRow | FinalGradingRow[] | null;
+        })[];
+      };
+      const select = [
+        "id,candidate_id,started_at,submitted_at,duration_sec,status,reliability",
+        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title))`,
+        "result:results(knowledge_score,status)",
+        "responses(id,item_id,answer,response_ms,pasted,ai_gradings(id,response_id,model,prompt_version,criterion_scores,score,rationale,evidence,raw,created_at),final_gradings(*))",
+      ].join(",");
+      const rows = await rest<Row[]>(`/attempts?id=eq.${encodeURIComponent(attemptId)}&select=${select}`);
+      const r = rows[0];
+      if (!r) return null;
+      const { exam, ...candidate } = r.candidate;
+      const result = one(r.result);
+      const review: ReviewAttempt = {
+        attempt: { id: r.id, candidate_id: r.candidate_id, started_at: r.started_at, submitted_at: r.submitted_at, duration_sec: r.duration_sec, status: r.status, reliability: r.reliability },
+        candidate,
+        exam,
+        knowledgeScore: result ? Number(result.knowledge_score) : null,
+        resultStatus: result?.status ?? null,
+        responses: r.responses.map((x) => ({ id: x.id, item_id: x.item_id, answer: x.answer, response_ms: x.response_ms, pasted: x.pasted })),
+        aiGradings: r.responses.flatMap((x) => x.ai_gradings.map(toAiRow)).sort((a, b) => b.created_at.localeCompare(a.created_at)),
+        finals: r.responses.flatMap((x) => {
+          const f = one(x.final_gradings);
+          return f ? [{ ...f, score: Number(f.score) }] : [];
+        }),
+      };
+      return review;
+    },
+
+    async ensureResponses(attemptId, rows) {
+      if (rows.length === 0) return;
+      await rest("/responses?on_conflict=attempt_id,item_id", {
+        method: "POST",
+        body: rows.map((r) => ({ attempt_id: attemptId, ...r })),
+        prefer: "resolution=ignore-duplicates,return=minimal",
+      });
+    },
+
+    async insertAiGrading(row) {
+      const rows = await rest<AiRowRaw[]>("/ai_gradings?select=id,response_id,model,prompt_version,criterion_scores,score,rationale,evidence,raw,created_at", {
+        method: "POST",
+        body: row,
+        prefer: "return=representation",
+      });
+      return toAiRow(rows[0]);
+    },
+
+    async upsertFinalGrading(row) {
+      await rest("/final_gradings?on_conflict=response_id", {
+        method: "POST",
+        body: { ...row, confirmed_at: new Date().toISOString() },
+        prefer: "resolution=merge-duplicates,return=minimal",
+      });
+    },
+
+    async setAttemptStatus(attemptId, to, from) {
+      await rest(`/attempts?id=eq.${encodeURIComponent(attemptId)}&status=in.(${from.join(",")})`, {
+        method: "PATCH",
+        body: { status: to },
+        prefer: "return=minimal",
+      });
+    },
+
+    async updateResults(attemptId, update) {
+      await rest(`/results?attempt_id=eq.${encodeURIComponent(attemptId)}`, {
+        method: "PATCH",
+        body: { ...update, computed_at: new Date().toISOString() },
+        prefer: "return=minimal",
       });
     },
   };

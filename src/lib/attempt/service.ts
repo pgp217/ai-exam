@@ -2,45 +2,13 @@
 import "server-only";
 
 import { ANSWER_KEY } from "../exam/answer-key";
-import { createMemoryStore } from "./memory-store";
-import { mergeResponses, parseResponses, scoreSubmission } from "./responses";
-import { createSupabaseStore } from "./supabase-store";
+import { scheduleGrading } from "../grading/service";
+import { mergeResponses, missingEssayRows, parseResponses, scoreSubmission } from "./responses";
+import { getStore } from "./store";
 import { acceptsAnswers, attemptDeadline, durationSec, examWindow, type ExamWindow } from "./timing";
 import type { ExamRow, ExamStore, ResponseRow, Session } from "./types";
 
-// ── 저장소 선택 ─────────────────────────────────────────
-// EXAM_STORE=memory | supabase. 지정하지 않으면 Supabase 서버 키가 있을 때 supabase, 없으면 memory(개발 전용).
-const g = globalThis as unknown as { __examStore?: ExamStore };
-
-export function storeMode(): "memory" | "supabase" {
-  const explicit = process.env.EXAM_STORE;
-  if (explicit === "memory" || explicit === "supabase") return explicit;
-  if (supabaseUrl() && supabaseKey()) return "supabase";
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("Supabase 설정이 없습니다. SUPABASE_URL 과 SUPABASE_SERVICE_ROLE_KEY 를 지정하세요.");
-  }
-  return "memory";
-}
-
-function supabaseUrl() {
-  return process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-}
-
-function supabaseKey() {
-  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY;
-}
-
-export function getStore(): ExamStore {
-  if (g.__examStore) return g.__examStore;
-  if (storeMode() === "memory") {
-    // 개발 서버의 HMR 에서도 데이터가 유지되도록 전역에 둔다
-    return (g.__examStore = createMemoryStore());
-  }
-  const url = supabaseUrl();
-  const key = supabaseKey();
-  if (!url || !key) throw new Error("EXAM_STORE=supabase 인데 SUPABASE_URL 또는 SUPABASE_SERVICE_ROLE_KEY 가 없습니다.");
-  return (g.__examStore = createSupabaseStore(url, key));
-}
+export { storeMode } from "./store";
 
 // ── 화면 상태 ───────────────────────────────────────────
 export type PublicExam = Pick<ExamRow, "title" | "intro_text" | "time_limit_min" | "starts_at" | "ends_at" | "show_result">;
@@ -132,14 +100,18 @@ function parse(body: unknown): ResponseRow[] | ActionResult {
 
 async function finalize(store: ExamStore, s: Session, incoming: ResponseRow[], now: number) {
   const attempt = s.attempt!;
-  const all = mergeResponses(s.responses, incoming);
+  // 답하지 않은 서술형도 빈 답안으로 저장해 채점·확정 대상이 되게 한다
+  const rows = [...incoming, ...missingEssayRows(mergeResponses(s.responses, incoming))];
+  const all = mergeResponses(s.responses, rows);
   const { knowledge, detail, reliability } = scoreSubmission(all, ANSWER_KEY);
-  await store.submitAttempt({
+  const submitted = await store.submitAttempt({
     attemptId: attempt.id,
-    responses: incoming,
+    responses: rows,
     durationSec: durationSec(s.exam, attempt, now),
     reliability,
     knowledgeScore: knowledge,
     detail,
   });
+  // 응답을 보낸 뒤 서술형 AI 1차 채점을 시작한다 (실패하면 관리자 화면에서 다시 실행)
+  if (submitted) scheduleGrading(attempt.id);
 }

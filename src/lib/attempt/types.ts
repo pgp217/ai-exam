@@ -58,3 +58,95 @@ export interface ExamStore {
   /** 이미 제출됐으면 아무것도 바꾸지 않고 false */
   submitAttempt(input: SubmitInput): Promise<boolean>;
 }
+
+// ── 서술형 채점 (3단계) ─────────────────────────────────
+
+export interface Evidence {
+  criterion: string; // 기준 key
+  quote: string; // 응답 원문 인용
+  verified: boolean; // 인용이 실제 응답에 있는지 서버에서 확인한 결과
+}
+
+export interface AiGradingRow {
+  id: string;
+  response_id: string;
+  model: string;
+  prompt_version: string;
+  criterion_scores: Record<string, number>;
+  score: number;
+  rationale: string; // 종합 판정 이유
+  reasons: Record<string, string>; // 기준별 판정 이유 (raw.reasons 에서 읽음)
+  evidence: Evidence[];
+  created_at: string;
+}
+
+/** raw 에는 모델 원문 출력과 함께 기준별 이유를 { reasons, output, ... } 형태로 저장한다 */
+export type NewAiGrading = Omit<AiGradingRow, "id" | "created_at" | "reasons"> & { raw: { reasons: Record<string, string> } & Record<string, unknown> };
+
+export interface FinalGradingRow {
+  response_id: string;
+  ai_grading_id: string | null;
+  grader_id: string;
+  criterion_scores: Record<string, number>;
+  score: number;
+  override_reason: string | null;
+  confirmed_at: string;
+}
+
+export interface CandidateInfo {
+  name: string;
+  employee_no: string;
+  department: string | null;
+  cohort: string | null;
+}
+
+export interface ReviewAttempt {
+  attempt: AttemptRow & { reliability: unknown };
+  candidate: CandidateInfo;
+  exam: { id: string; title: string };
+  knowledgeScore: number | null;
+  resultStatus: "grading" | "complete" | null;
+  responses: (ResponseRow & { id: string })[];
+  aiGradings: AiGradingRow[]; // 최신순
+  finals: FinalGradingRow[];
+}
+
+export interface QueueEssay {
+  itemId: string;
+  responseId: string | null;
+  ai: Pick<AiGradingRow, "id" | "criterion_scores" | "score"> | null; // 최신 AI 채점
+  final: Pick<FinalGradingRow, "criterion_scores" | "score" | "ai_grading_id"> | null;
+}
+
+export interface QueueRow {
+  attemptId: string;
+  status: AttemptStatus;
+  submittedAt: string | null;
+  reliability: unknown;
+  candidate: CandidateInfo;
+  examTitle: string;
+  essays: QueueEssay[];
+  aiGradingsById: Record<string, Record<string, number>>; // 일치율 계산용: AI 채점 id → 기준별 점수
+}
+
+export interface ResultUpdate {
+  practice_score: number | null;
+  total: number | null;
+  grade: string | null;
+  ai_type: string | null;
+  detail: unknown;
+  status: "grading" | "complete";
+}
+
+export interface GradingStore {
+  isAdmin(userId: string): Promise<{ name: string } | null>;
+  listQueue(): Promise<QueueRow[]>;
+  getReviewAttempt(attemptId: string): Promise<ReviewAttempt | null>;
+  /** 없는 응답 행만 만든다 (미응답 서술형을 채점하려면 행이 있어야 한다) */
+  ensureResponses(attemptId: string, rows: ResponseRow[]): Promise<void>;
+  insertAiGrading(row: NewAiGrading): Promise<AiGradingRow>;
+  upsertFinalGrading(row: Omit<FinalGradingRow, "confirmed_at">): Promise<void>;
+  /** from 에 있는 상태일 때만 바꾼다 */
+  setAttemptStatus(attemptId: string, to: AttemptStatus, from: AttemptStatus[]): Promise<void>;
+  updateResults(attemptId: string, update: ResultUpdate): Promise<void>;
+}

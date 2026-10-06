@@ -73,8 +73,15 @@ export interface SubmissionScore {
   reliability: ReliabilityResult;
 }
 
-/** 제출 시점의 객관식 자동 채점과 응답 신뢰도 판정. 서술형 점수는 아직 없다. */
-export function scoreSubmission(responses: ResponseRow[], answerKey: Record<string, number>): SubmissionScore {
+/**
+ * 객관식 자동 채점과 응답 신뢰도 판정. 제출 시점에는 서술형 점수가 없고(essayScores 생략),
+ * 담당자가 서술형을 확정하면 확정 점수를 넣어 다시 계산한다.
+ */
+export function scoreSubmission(
+  responses: ResponseRow[],
+  answerKey: Record<string, number>,
+  essayScores: Record<string, number | null> = {},
+): SubmissionScore {
   const value = (id: string) => {
     const a = responses.find((r) => r.item_id === id)?.answer;
     return a && "value" in a ? a.value : null;
@@ -89,7 +96,7 @@ export function scoreSubmission(responses: ResponseRow[], answerKey: Record<stri
   const self = Object.fromEntries(selfIds.map((id) => [id, value(id)]));
 
   const detail = scoreAttempt(
-    { choice, self, essay: Object.fromEntries(essayIds.map((id) => [id, null])) },
+    { choice, self, essay: Object.fromEntries(essayIds.map((id) => [id, essayScores[id] ?? null])) },
     answerKey,
   );
 
@@ -107,4 +114,14 @@ export function scoreSubmission(responses: ResponseRow[], answerKey: Record<stri
   });
 
   return { knowledge: detail.knowledge, detail, reliability };
+}
+
+/** 응답이 없는 서술형 문항에 빈 답안 행을 만든다 (빈 답안도 채점·확정 대상) */
+export function missingEssayRows(responses: Pick<ResponseRow, "item_id">[]): ResponseRow[] {
+  return ALL_ITEMS.filter((i) => i.type === "essay" && !responses.some((r) => r.item_id === i.id)).map((i) => ({
+    item_id: i.id,
+    answer: { text: "" },
+    response_ms: null,
+    pasted: false,
+  }));
 }

@@ -5,6 +5,9 @@ import { loadSession, type PublicExam } from "@/lib/attempt/service";
 import ExamRunner from "./exam-runner";
 import StartForm from "./start-form";
 
+// 마감 지난 응시를 열면 자동 제출하고 after() 로 AI 채점을 시작한다
+export const maxDuration = 300;
+
 export const metadata: Metadata = {
   title: "응시 | 신입사원 AI 역량 시험",
   robots: { index: false, follow: false },

@@ -10,7 +10,7 @@
 
 - [x] 1단계: 요인 체계, 문항 은행(객관식 24 · 자기평가 8 · 서술형 3), 채점 기준표, 채점 엔진, 응답 신뢰도, DB 스키마
 - [x] 2단계: 응시 화면(안내·동의, 타이머, 문항 이동, 자동 임시 저장, 마감 자동 제출) + 객관식 자동 채점 + 응답 신뢰도 저장
-- [ ] 3단계: 서술형 AI 1차 채점 + 담당자 리뷰·확정
+- [x] 3단계: 서술형 AI 1차 채점(Claude API, 근거 인용 검증) + 관리자 로그인 + 담당자 리뷰·확정 + 결과 계산 + AI-담당자 일치율
 - [ ] 4단계: 개인 리포트 + 관리자 결과 목록
 - [ ] 5단계: 시험 생성 마법사 + 엑셀 업로드 + 안내문 작성
 - [ ] 6단계: 정합성 점검, 배포, 데모 링크
@@ -30,6 +30,12 @@
 | `src/lib/attempt/supabase-store.ts` · `memory-store.ts` | Supabase(PostgREST) 저장소 · 개발용 메모리 저장소 |
 | `src/app/t/[token]` | 응시 화면 (안내·동의 → 응시 → 제출 완료) |
 | `src/app/api/t/[token]/{start,responses,submit}` | 응시 시작 · 임시 저장(PUT) · 제출 API |
+| `src/lib/grading/grade.ts` | 채점 프롬프트, 모델 출력 검증(인용이 응답 원문에 있는지 확인), 개발용 가짜 채점, 일치율 |
+| `src/lib/grading/claude.ts` | Claude API 호출 (`claude-opus-5-5`, 구조화 출력, 거절 시 서버 측 fallback) |
+| `src/lib/grading/service.ts` | AI 1차 채점 실행(제출 직후 `after()`), 담당자 확정, 결과 재계산 |
+| `src/lib/admin/` | 관리자 로그인(Supabase Auth), 토큰 서명 검증(JWKS), 세션 쿠키 |
+| `src/proxy.ts` | 관리자 화면 요청 전 만료가 가까운 로그인 토큰 갱신 |
+| `src/app/admin` | 관리자 로그인, 서술형 채점 목록, 응시자별 채점 리뷰 |
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
 | `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
@@ -45,16 +51,25 @@ npm test                     # 채점·응시 로직 단위 테스트
 
 Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가 없으면 `npm run dev` 는 **메모리 저장소**로 동작합니다. 첫 화면에 데모 응시 링크(`/t/demo`, `/t/demo2`, `/t/demo3`)가 나오고, 서버를 다시 켜면 초기화됩니다. `EXAM_STORE=memory|supabase` 로 강제할 수 있고, 프로덕션에서는 키가 없으면 메모리로 넘어가지 않고 오류를 냅니다.
 
+메모리 저장소 모드의 관리자 화면(`/admin`)은 데모 계정 `admin@demo.local` / `demo1234` 로 들어갑니다. Claude API 키가 없으면 개발 환경에서는 **가짜 채점**(키워드 기반, 모델명 `fake-grader`)으로 흐름을 시험할 수 있고, 화면에 "개발용 가짜 채점"으로 표시됩니다. `AI_GRADER=claude|fake` 로 강제할 수 있고, 프로덕션에서는 키가 없으면 가짜 채점으로 넘어가지 않습니다(담당자가 직접 채점해 확정할 수는 있습니다).
+
 응시 흐름
 - 안내·동의 → 시작하면 `attempts` 생성(1인 1회). 제한 시간은 `시작 + time_limit_min` 과 응시 기간 종료 중 이른 시각입니다.
 - 순서는 자기평가 → 객관식 → 서술형입니다. 자기평가가 객관식을 풀고 난 인상에 끌리지 않도록 먼저 받습니다.
 - 답을 바꾸면 1초 뒤, 문항을 옮길 때, 15초마다, 탭을 떠날 때 바뀐 응답만 저장합니다. 문항별 응답 시간은 화면에 떠 있던 누적 시간이고(다른 탭을 보는 동안은 제외), 서술형 붙여넣기는 한 번이라도 있으면 기록이 남습니다.
 - 제출하거나 시간이 끝나면 객관식 지식 점수와 응답 신뢰도를 계산해 `attempts.reliability`, `results`(status `grading`)에 저장합니다. 마감 + 60초가 지난 요청의 응답은 받지 않고, 마감 뒤 링크를 다시 열면 저장된 응답으로 자동 제출합니다.
 
+서술형 채점 흐름
+- 제출 응답을 보낸 뒤(`after()`) 서술형 3문항을 병렬로 AI 1차 채점해 `ai_gradings` 에 저장합니다. 이름·사번은 보내지 않고 문항·기준표·답안만 보냅니다. 답안 안의 지시는 따르지 않도록 프롬프트에 명시했습니다.
+- 모델은 기준별 1~4점, 판단 이유, 근거 인용을 구조화 출력으로 돌려줍니다. 문항 점수는 모델이 아니라 기준별 점수로 서버가 계산하고, 인용이 답안 원문에 실제로 있는지 확인해 없으면 화면에 경고로 표시합니다. 빈 답안은 모델을 부르지 않고 모든 기준 1점입니다.
+- 세 문항의 AI 채점이 끝나면 상태가 "검토 대기"가 됩니다. 실패한 문항은 리뷰 화면의 "AI 채점 실행/다시 채점"으로 다시 돌릴 수 있습니다.
+- 담당자는 리뷰 화면에서 기준별 점수를 확정합니다. AI 점수와 다르게 확정하면 사유가 필수입니다. 세 문항이 모두 확정되면 실전·종합 점수, 등급, 유형을 계산해 `results`(status `complete`)에 저장합니다. 확정 점수를 고치면 결과도 다시 계산합니다.
+- 채점 목록 상단에 AI-담당자 일치율(확정된 기준 중 AI 점수와 같은 비율)을 보여 줍니다.
+
 ## Supabase 설정
 
 1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
-2. Authentication 에서 관리자 계정을 만든 뒤 `admins` 테이블에 등록
+2. Authentication 에서 관리자 계정을 만든 뒤(Auto Confirm User 체크) `admins` 테이블에 등록
    ```sql
    insert into public.admins (user_id, name) values ('<auth.users 의 id>', '관리자 이름');
    ```
