@@ -1,4 +1,6 @@
-# 신입사원 AI 역량 시험 — 설계안 v0.1
+# 신입사원 AI 역량 시험 — 설계안 v0.2
+
+> v0.2 변경: 문항·정답·채점 기준표는 DB가 아니라 코드(`src/lib/exam`)를 기준으로 관리한다(`items` 테이블 제외, `admins` 테이블 추가). 문항 원문과 채점 기준표 전체는 `items.ts`, `answer-key.data.ts` 참고.
 
 참고: genai-book 교재(Part 1~5, 부록 E), 에이치닷 역량진단 관리자 화면·결과 리포트 샘플
 
@@ -117,12 +119,11 @@
 ## 9. DB 스키마 (Supabase / Postgres 초안)
 
 ```sql
+admins           (user_id, name)
 exams            (id, title, starts_at, ends_at, time_limit_min, intro_text,
                   show_result, item_set_version, status, created_at)
 candidates       (id, exam_id, employee_no, name, email, phone, department,
                   cohort, joined_at, access_token, invited_at)
-items            (id, item_set_version, top_factor, mid_factor, sub_factor,
-                  source_chapter, type, prompt, options jsonb, answer, rubric jsonb, sort_order)
 attempts         (id, candidate_id, started_at, submitted_at, duration_sec,
                   reliability jsonb, status)
 responses        (id, attempt_id, item_id, answer jsonb, response_ms, pasted bool)
@@ -135,7 +136,7 @@ results          (attempt_id PK, factor_scores jsonb, knowledge_score, practice_
 notice_templates (id, exam_id, channel, subject, body)
 ```
 
-관리자는 Supabase Auth로 로그인, 응시자는 `access_token` 링크로만 접근 (Row Level Security로 분리).
+관리자는 Supabase Auth로 로그인, 응시자는 `access_token` 링크로 서버(service_role)를 거쳐서만 접근. 전체 SQL은 `supabase/migrations/0001_init.sql`.
 
 ## 10. 개발 단계
 
