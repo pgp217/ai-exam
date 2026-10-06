@@ -1,26 +1,20 @@
 // 요인 체계 (상위 3 → 중위 8 → 하위 16). 교재: genai-book Ch 1~11.
 
-export const BOOK_URL = "https://zakedu.github.io/genai-book/";
-
 export const CHAPTERS = {
-  ch01: { title: "Chapter 1 생성형 AI란", path: "part1/ch01-what-is-genai/" },
-  ch02: { title: "Chapter 2 주요 도구와 생태계", path: "part2/ch02-tools-ecosystem/" },
-  ch03: { title: "Chapter 3 프롬프트의 구조", path: "part2/ch03-prompt-structure/" },
-  ch04: { title: "Chapter 4 고급 프롬프팅 기법", path: "part2/ch04-advanced-prompting/" },
-  ch05: { title: "Chapter 5 반복 개선의 방법론", path: "part2/ch05-iteration/" },
-  ch06: { title: "Chapter 6 학습과 연구", path: "part3/ch06-learning-research/" },
-  ch07: { title: "Chapter 7 업무와 비즈니스", path: "part3/ch07-business/" },
-  ch08: { title: "Chapter 8 창작과 콘텐츠", path: "part3/ch08-creative/" },
-  ch09: { title: "Chapter 9 환각의 이해와 대응", path: "part4/ch09-hallucination/" },
-  ch10: { title: "Chapter 10 윤리적 사용과 책임", path: "part4/ch10-ethics/" },
-  ch11: { title: "Chapter 11 책임 있는 AI 사용", path: "part4/ch11-responsible-use/" },
+  ch01: { title: "Chapter 1 생성형 AI란" },
+  ch02: { title: "Chapter 2 주요 도구와 생태계" },
+  ch03: { title: "Chapter 3 프롬프트의 구조" },
+  ch04: { title: "Chapter 4 고급 프롬프팅 기법" },
+  ch05: { title: "Chapter 5 반복 개선의 방법론" },
+  ch06: { title: "Chapter 6 학습과 연구" },
+  ch07: { title: "Chapter 7 업무와 비즈니스" },
+  ch08: { title: "Chapter 8 창작과 콘텐츠" },
+  ch09: { title: "Chapter 9 환각의 이해와 대응" },
+  ch10: { title: "Chapter 10 윤리적 사용과 책임" },
+  ch11: { title: "Chapter 11 책임 있는 AI 사용" },
 } as const;
 
 export type ChapterId = keyof typeof CHAPTERS;
-
-export function chapterUrl(id: ChapterId): string {
-  return BOOK_URL + CHAPTERS[id].path;
-}
 
 export type TopFactorId = "understand" | "apply" | "responsible";
 export type MidFactorId = "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8";
