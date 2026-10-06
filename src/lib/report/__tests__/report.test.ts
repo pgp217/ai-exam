@@ -92,6 +92,17 @@ describe("feedback content", () => {
     expect(p).not.toContain(sims[0].employee_no);
   });
 
+  it("does not present level-1 rubric text as something the candidate did, and passes observed reasons", () => {
+    const rb = RUBRICS.find((x) => x.itemId === "E2")!;
+    const scores = { identify: 4, method: 3, logic: 1, decision: 1 };
+    const p = buildFeedbackPrompt(resultOf(0), [{ itemId: "E2", criterionScores: scores, rubric: rb, observed: { decision: "사용 판단이 답안에 없습니다." } }]);
+    const decision = rb.criteria.find((c) => c.key === "decision")!;
+    expect(p).not.toContain(decision.levels[0]); // "그대로 사용하겠다고 했다"
+    expect(p).toContain("최저 수준(다음 단계 미충족, 언급 없음 포함)");
+    expect(p).toContain(`다음 단계(2점) 수준 설명: ${decision.levels[1]}`);
+    expect(p).toContain("<observed>사용 판단이 답안에 없습니다.</observed>");
+  });
+
   it("normalizes actions and drops unknown chapters", () => {
     const n = normalizeFeedback({ summary: " 요약 ", actions: [{ title: "a", detail: "b", chapter: "ch09" }, { title: "c", detail: "d", chapter: "none" }, { title: " ", detail: "x", chapter: "ch01" }] });
     expect(n).toEqual({ summary: "요약", actions: [{ title: "a", detail: "b", chapter: "ch09" }, { title: "c", detail: "d", chapter: null }] });

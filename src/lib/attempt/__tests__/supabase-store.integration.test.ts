@@ -8,9 +8,9 @@ const key = process.env.STORE_IT_KEY;
 const examId = process.env.STORE_IT_EXAM;
 
 describe.skipIf(!url || !key || !examId)("supabase store (integration)", () => {
-  const store = createSupabaseStore(url!, key!);
-
   it("reads the cohort, results list, exams, and a report; saves feedback", async () => {
+    // describe 본문은 건너뛸 때도 실행되므로 저장소는 테스트 안에서 만든다
+    const store = createSupabaseStore(url!, key!);
     const cohort = await store.getCohort(examId!);
     expect(cohort.length).toBeGreaterThanOrEqual(5);
     expect(cohort.every((m) => typeof m.total === "number" && Object.keys(m.tops).length === 3)).toBe(true);
