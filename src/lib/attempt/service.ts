@@ -59,17 +59,19 @@ function publicExam(e: ExamRow): PublicExam {
 /** 응시 링크로 들어왔을 때의 화면 상태. 마감이 지난 응시는 저장된 응답으로 제출 처리한다. */
 export async function loadSession(token: string): Promise<SessionView> {
   const store = getStore();
-  let s = await store.findSession(token);
+  const s = await store.findSession(token);
   if (!s) return { state: "not-found" };
 
   const now = Date.now();
-  if (s.attempt?.status === "in_progress" && !acceptsAnswers(s.exam, s.attempt, now)) {
-    await finalize(store, s, [], now);
-    s = (await store.findSession(token))!;
-  }
-
   const base = { exam: publicExam(s.exam), candidateName: s.candidate.name };
   const a = s.attempt;
+
+  if (a?.status === "in_progress" && !acceptsAnswers(s.exam, a, now)) {
+    // 여기서 다시 조회하지 않는다. 렌더링 중 같은 GET fetch 는 Next.js 가 메모이즈해 제출 전 상태가 돌아온다.
+    await finalize(store, s, [], now);
+    return { state: "submitted", ...base, submittedAt: new Date(now).toISOString() };
+  }
+
   if (a && a.status !== "in_progress") return { state: "submitted", ...base, submittedAt: a.submitted_at };
   if (a) return { state: "in-progress", ...base, deadline: attemptDeadline(s.exam, a), now, responses: s.responses };
 
