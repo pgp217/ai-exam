@@ -13,7 +13,7 @@
 - [x] 3단계: 서술형 AI 1차 채점(Claude API, 근거 인용 검증) + 관리자 로그인 + 담당자 리뷰·확정 + 결과 계산 + AI-담당자 일치율
 - [x] 4단계: 개인 리포트(동기 분포·상위 %, 유형, 자기평가 비교, AI 성장 피드백 + 담당자 승인) + 관리자 결과 목록(필터)
 - [x] 5단계: 시험 생성 마법사(기본 설정 → 응시 사이트 → 대상자 → 안내문 → 시험 열기) + 대상자 엑셀 업로드 + 안내문 작성·내보내기
-- [ ] 6단계: 정합성 점검, 배포, 데모 링크
+- [x] 6단계: 정합성 점검(전체 결과 독립 재계산), 권한·보안 점검, 운영 정리, 데모 준비
 
 ## 구조
 
@@ -43,6 +43,7 @@
 | `src/app/admin/(console)/results` | 결과 목록(필터), 개인 리포트 + 피드백 확인·승인 |
 | `src/lib/exams/` | 시험 설정 검증(KST 입력, D-day), 대상자 엑셀 검증·읽기(`exceljs`), 안내문 치환·문자 바이트 계산, 시험 관리 서비스 |
 | `src/app/admin/(console)/exams` | 시험 목록, 새 시험, 단계별 설정(기본·응시 사이트·대상자·안내문), 양식 내려받기, 안내문 CSV |
+| `scripts/crosscheck.py` · `export-scoring-config.mts` | 정합성 점검: 채점 규칙을 앱과 별개로 구현해 DB 결과와 대조 |
 | `scripts/seed-cohort.mts` | 시험에 가상 동기 응시자를 넣거나(`--count`) 지우는(`--remove`) 스크립트 |
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
 | `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
@@ -98,3 +99,51 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 3. Vercel 프로젝트 환경 변수에 `.env.example` 의 값 등록 (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY` 는 서버 전용). 서버 키는 레거시 `service_role` 키(JWT)나 새 Secret key(`sb_secret_...`) 모두 됩니다. Publishable/anon 키로는 응시 API 가 동작하지 않습니다.
 
 접근 모델: 응시자는 로그인 없이 개인별 링크(`access_token`)로 서버를 거쳐서만 DB에 접근하고, `anon` 역할에는 권한이 없습니다. 관리자는 Supabase Auth 로그인 + `admins` 등록이 필요합니다.
+
+## 운영 가이드
+
+배포 주소: https://ai-exam-lime.vercel.app (관리자: `/admin`)
+
+### 시험 진행 순서
+1. **관리자 추가**: Supabase Authentication → Add user(Auto Confirm User 체크) → SQL Editor 에서
+   ```sql
+   insert into public.admins (user_id, name) select id, '이름' from auth.users where email = '이메일';
+   ```
+   관리자를 빼려면 `delete from public.admins where user_id = (select id from auth.users where email = '이메일');`
+2. **시험 만들기** (`/admin/exams`): 기본 설정 → 응시 사이트 → 대상자(엑셀) → 안내문 → **시험 열기**
+3. **안내**: 안내문 CSV 를 내려받아 사내 메일·문자 도구로 보낸다 (앱은 직접 보내지 않음)
+4. **채점** (`/admin/grading`): 제출 후 1분 안에 AI 1차 채점이 끝나면 "검토 대기". 담당자가 문항별로 확정한다
+5. **리포트** (`/admin/results`): 세 문항이 확정되면 리포트가 생기고 AI 성장 피드백 초안이 만들어진다. 확인 후 **승인하고 공개**하면 결과 공개 시험의 응시자가 자기 응시 링크에서 본다
+6. **마감**: 응시 기간이 끝나면 자동으로 응시를 받지 않는다. 시험 화면의 **마감하기**로 일찍 닫을 수도 있다
+
+### 환경 변수 (Vercel)
+| 이름 | 용도 |
+|---|---|
+| `SUPABASE_URL` | Supabase 프로젝트 주소 |
+| `SUPABASE_ANON_KEY` | 관리자 로그인용 공개 키 (Publishable key) |
+| `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 Secret key. 절대 `NEXT_PUBLIC_` 을 붙이지 않는다 |
+| `ANTHROPIC_API_KEY` | 서술형 AI 채점·성장 피드백 |
+| `APP_URL` | 응시 링크·안내문에 쓸 주소 |
+
+### 비용 (Claude API, 실측)
+- 서술형 1차 채점: 응시자 1명(3문항)당 약 $0.13 (`claude-opus-5-5`, 문항당 입력 약 2,000 · 출력 약 1,400~2,100 토큰 기준)
+- 성장 피드백: 결과 확정 시 1회 + 다시 생성할 때마다 1회
+- Anthropic Console 에서 월 사용 한도를 정해 두는 것을 권장한다
+
+### 정합성 점검
+```bash
+npx tsx scripts/export-scoring-config.mts > /tmp/scoring-config.json
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/crosscheck.py /tmp/scoring-config.json
+```
+저장된 모든 결과(지식·실전·상위요인·종합 점수, 등급, 유형, 서술형 기준 환산, 상태)를 독립 계산과 대조하고, 불일치가 있으면 종료 코드 1로 끝난다.
+
+### 보안 점검 요약
+- DB: `anon` 은 모든 테이블·함수 접근 거부. 로그인했지만 관리자가 아닌 사용자는 행 단위 보안으로 0건 조회, 쓰기 거부. 응시 저장·제출 함수는 서버(service_role)만 호출
+- 앱: 관리자 화면·Server Action·내려받기는 모두 관리자 확인(로그인 토큰 서명 검증 + `admins` 등록). 응시 링크 토큰은 192비트 난수
+- 응답 헤더: 클릭재킹 방지, `nosniff`, 응시 링크·관리자 화면은 `no-referrer`·검색 제외
+- 안내문 CSV 는 수식으로 실행될 수 있는 칸(`=`, `+`, `-`, `@` 시작)을 글자로 바꾼다
+
+### 데모 데이터 정리 (실제 운영 전에)
+- 가상 동기 30명: `npx tsx scripts/seed-cohort.mts --exam <데모 시험 ID> --remove`
+- 데모 응시자(사번 `DEMO-`)·데모 시험: 응시 기록이 없으면 대상자 화면에서 삭제. 데모 시험 자체는 SQL Editor 에서 `delete from public.exams where id = '<ID>';` (대상자·응시·결과가 함께 지워진다)
+- 데모 관리자 계정: `admins` 에서 지우고 Supabase Authentication 에서 사용자 삭제

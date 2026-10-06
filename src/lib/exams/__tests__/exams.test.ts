@@ -123,6 +123,9 @@ describe("notices", () => {
   it("escapes CSV cells", () => {
     expect(csvCell('a,"b"\nc')).toBe('"a,""b""\nc"');
     expect(csvCell(null)).toBe("");
+    expect(csvCell('=HYPERLINK("http://x")')).toBe(`"'=HYPERLINK(""http://x"")"`); // 수식 주입 방지
+    expect(csvCell("+82")).toBe("'+82");
+    expect(csvCell("010-1234-5678")).toBe("010-1234-5678");
   });
 });
 
