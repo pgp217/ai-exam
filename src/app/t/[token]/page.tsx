@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "@/lib/exam/items";
 import { loadSession, type PublicExam } from "@/lib/attempt/service";
+import { loadReport } from "@/lib/report/service";
+import Report from "@/components/report/report";
 import ExamRunner from "./exam-runner";
 import StartForm from "./start-form";
 
@@ -34,6 +36,24 @@ export default async function TakeExamPage({ params }: PageProps<"/t/[token]">) 
     );
   }
 
+  // 결과 공개 시험이고 채점이 확정됐으면 개인 리포트를 보여 준다
+  if (view.state === "submitted" && view.exam.show_result) {
+    const loaded = await loadReport(view.attemptId);
+    if (loaded?.result) {
+      const approved = loaded.feedback?.status === "approved" ? loaded.feedback : null;
+      return (
+        <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-10">
+          <header>
+            <p className="text-sm text-zinc-500">{view.candidateName} 님의 결과 리포트</p>
+            <h1 className="mt-1 text-2xl font-bold">{view.exam.title}</h1>
+          </header>
+          <Report result={loaded.result} cohort={loaded.cohort} feedback={approved} feedbackPending={!approved} />
+          <p className="text-xs text-zinc-500">이 리포트는 본인만 볼 수 있도록 개인 응시 링크로 제공됩니다. 링크를 다른 사람과 공유하지 마세요.</p>
+        </main>
+      );
+    }
+  }
+
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-12">
       <header>
@@ -62,7 +82,7 @@ export default async function TakeExamPage({ params }: PageProps<"/t/[token]">) 
           {view.submittedAt && <p className="mt-1 text-sm text-zinc-600">제출 시각: {fmt.format(new Date(view.submittedAt))}</p>}
           <p className="mt-3 text-sm text-zinc-600">
             {view.exam.show_result
-              ? "서술형 채점이 확정되면 이 링크에서 결과 리포트를 볼 수 있습니다."
+              ? "서술형 채점이 확정되면 이 링크에서 결과 리포트를 볼 수 있습니다. 채점에는 며칠이 걸릴 수 있습니다."
               : "결과는 담당자를 통해 안내됩니다."}
           </p>
         </Notice>

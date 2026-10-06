@@ -4,8 +4,8 @@ import "server-only";
 
 import { ESSAY_ITEMS } from "../exam/items";
 import type {
-  AiGradingRow, AttemptRow, CandidateInfo, ExamRow, ExamStore, FinalGradingRow, GradingStore,
-  QueueRow, ResponseRow, ReviewAttempt, Session, SubmitInput,
+  AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamRow, ExamStore, Feedback, FinalGradingRow, GradingStore,
+  QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput,
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -32,7 +32,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore {
+export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore & ReportStore {
   const base = url.replace(/\/+$/, "") + "/rest/v1";
   const headers: Record<string, string> = { apikey: key, "Content-Type": "application/json", Accept: "application/json" };
   // 레거시 service_role 키(JWT)는 Authorization 에도 넣는다. 새 Secret key(sb_secret_...)는 apikey 만 쓴다.
@@ -239,6 +239,81 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       await rest(`/results?attempt_id=eq.${encodeURIComponent(attemptId)}`, {
         method: "PATCH",
         body: { ...update, computed_at: new Date().toISOString() },
+        prefer: "return=minimal",
+      });
+    },
+
+    // ── 리포트·결과 목록 ─────────────────────────────
+    async getReport(attemptId) {
+      type Row = AttemptRow & {
+        reliability: unknown;
+        candidate: CandidateInfo & { exam: { id: string; title: string; show_result: boolean } };
+        result: ReportResult | ReportResult[] | null;
+      };
+      type ReportResult = { status: "grading" | "complete"; detail: unknown; feedback: Feedback | null };
+      const select = [
+        "id,candidate_id,started_at,submitted_at,duration_sec,status,reliability",
+        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title,show_result))`,
+        "result:results(status,detail,feedback)",
+      ].join(",");
+      const rows = await rest<Row[]>(`/attempts?id=eq.${encodeURIComponent(attemptId)}&select=${select}`);
+      const r = rows[0];
+      if (!r) return null;
+      const { exam, ...candidate } = r.candidate;
+      const report: ReportData = {
+        attemptId: r.id, status: r.status, submittedAt: r.submitted_at, durationSec: r.duration_sec, reliability: r.reliability,
+        candidate, exam, result: one(r.result),
+      };
+      return report;
+    },
+
+    async getCohort(examId) {
+      type Row = { attempt_id: string; total: number; knowledge_score: number; practice_score: number; detail: { tops?: { id: string; score: number | null }[] } };
+      const rows = await rest<Row[]>(
+        `/results?status=eq.complete&select=attempt_id,total,knowledge_score,practice_score,detail,attempt:attempts!inner(candidate:candidates!inner(exam_id))&attempt.candidate.exam_id=eq.${encodeURIComponent(examId)}`,
+      );
+      return rows.map((r): CohortMember => ({
+        attemptId: r.attempt_id,
+        total: Number(r.total),
+        knowledge: Number(r.knowledge_score),
+        practice: Number(r.practice_score),
+        tops: Object.fromEntries((r.detail.tops ?? []).filter((t) => t.score != null).map((t) => [t.id, Number(t.score)])),
+      }));
+    },
+
+    async listResults() {
+      type Res = { status: "grading" | "complete"; total: number | null; grade: string | null; ai_type: string | null; knowledge_score: number; practice_score: number | null; feedback: Feedback | null };
+      type Att = { id: string; status: AttemptRow["status"]; submitted_at: string | null; reliability: unknown; result: Res | Res[] | null };
+      type Row = CandidateInfo & { id: string; exam: { id: string; title: string }; attempt: Att | Att[] | null };
+      const select = `id,${CANDIDATE_INFO},exam:exams(id,title),attempt:attempts(id,status,submitted_at,reliability,result:results(status,total,grade,ai_type,knowledge_score,practice_score,feedback))`;
+      const rows = await rest<Row[]>(`/candidates?select=${select}&order=employee_no.asc`);
+      return rows.map((r): ResultRow => {
+        const a = one(r.attempt);
+        const res = a ? one(a.result) : null;
+        return {
+          candidateId: r.id,
+          candidate: { name: r.name, employee_no: r.employee_no, department: r.department, cohort: r.cohort },
+          exam: r.exam,
+          attempt: a ? { id: a.id, status: a.status, submittedAt: a.submitted_at, reliability: a.reliability } : null,
+          result: res
+            ? {
+                status: res.status, total: res.total == null ? null : Number(res.total), grade: res.grade, aiType: res.ai_type,
+                knowledge: Number(res.knowledge_score), practice: res.practice_score == null ? null : Number(res.practice_score),
+                feedbackStatus: res.feedback?.status ?? null,
+              }
+            : null,
+        };
+      });
+    },
+
+    async listExams() {
+      return rest<{ id: string; title: string }[]>("/exams?select=id,title&order=created_at.desc");
+    },
+
+    async saveFeedback(attemptId, feedback) {
+      await rest(`/results?attempt_id=eq.${encodeURIComponent(attemptId)}`, {
+        method: "PATCH",
+        body: { feedback },
         prefer: "return=minimal",
       });
     },

@@ -18,7 +18,7 @@ export type SessionView =
   | { state: "unavailable"; reason: Exclude<ExamWindow, "open">; exam: PublicExam; candidateName: string }
   | { state: "intro"; exam: PublicExam; candidateName: string }
   | { state: "in-progress"; exam: PublicExam; candidateName: string; deadline: number; now: number; responses: ResponseRow[] }
-  | { state: "submitted"; exam: PublicExam; candidateName: string; submittedAt: string | null };
+  | { state: "submitted"; exam: PublicExam; candidateName: string; submittedAt: string | null; attemptId: string };
 
 function publicExam(e: ExamRow): PublicExam {
   return { title: e.title, intro_text: e.intro_text, time_limit_min: e.time_limit_min, starts_at: e.starts_at, ends_at: e.ends_at, show_result: e.show_result };
@@ -37,10 +37,10 @@ export async function loadSession(token: string): Promise<SessionView> {
   if (a?.status === "in_progress" && !acceptsAnswers(s.exam, a, now)) {
     // 여기서 다시 조회하지 않는다. 렌더링 중 같은 GET fetch 는 Next.js 가 메모이즈해 제출 전 상태가 돌아온다.
     await finalize(store, s, [], now);
-    return { state: "submitted", ...base, submittedAt: new Date(now).toISOString() };
+    return { state: "submitted", ...base, submittedAt: new Date(now).toISOString(), attemptId: a.id };
   }
 
-  if (a && a.status !== "in_progress") return { state: "submitted", ...base, submittedAt: a.submitted_at };
+  if (a && a.status !== "in_progress") return { state: "submitted", ...base, submittedAt: a.submitted_at, attemptId: a.id };
   if (a) return { state: "in-progress", ...base, deadline: attemptDeadline(s.exam, a), now, responses: s.responses };
 
   const w = examWindow(s.exam, now);

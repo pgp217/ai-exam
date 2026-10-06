@@ -1,10 +1,13 @@
 // 개발용 메모리 저장소. Supabase 없이 응시 화면을 돌려 볼 때 쓴다 (서버 재시작 시 초기화).
 // 데모 응시 링크: /t/demo, /t/demo2, /t/demo3 · 데모 관리자: memory-auth.ts 참고
 
+import { ANSWER_KEY, RUBRICS } from "../exam/answer-key.data";
 import { ESSAY_ITEMS, ITEM_SET_VERSION } from "../exam/items";
-import { mergeResponses } from "./responses";
+import { simulateCohort } from "../exam/simulate";
+import { mergeResponses, scoreSubmission } from "./responses";
 import type {
-  AiGradingRow, AttemptRow, CandidateInfo, ExamRow, ExamStore, FinalGradingRow, GradingStore, QueueRow, ResponseRow, ResultUpdate,
+  AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamRow, ExamStore, Feedback, FinalGradingRow, GradingStore, QueueRow,
+  ReportStore, ResponseRow, ResultRow, ResultUpdate,
 } from "./types";
 
 interface Candidate extends CandidateInfo {
@@ -20,7 +23,7 @@ export interface MemoryDb {
   candidates: Candidate[];
   attempts: AttemptRow[];
   responses: Map<string, StoredResponse[]>; // attempt_id → 응답
-  results: Map<string, Partial<ResultUpdate> & { knowledge_score: number; detail: unknown; status: "grading" | "complete" }>;
+  results: Map<string, Partial<ResultUpdate> & { knowledge_score: number; detail: unknown; status: "grading" | "complete"; feedback?: Feedback | null }>;
   reliability: Map<string, unknown>;
   aiGradings: AiGradingRow[];
   finals: FinalGradingRow[];
@@ -35,7 +38,8 @@ function mergeStored(saved: StoredResponse[], incoming: ResponseRow[]): StoredRe
   return mergeResponses(saved, incoming).map((r) => ({ ...r, id: ids.get(r.item_id) ?? crypto.randomUUID() }));
 }
 
-export function demoDb(now = Date.now()): MemoryDb {
+/** simulated: 동기 분포를 보여 주기 위한 가상 응시자 수 (채점까지 끝난 상태로 만든다) */
+export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): MemoryDb {
   const exam: ExamRow = {
     id: "demo-exam",
     title: "2026 하반기 신입사원 AI 역량 시험 (데모)",
@@ -48,7 +52,7 @@ export function demoDb(now = Date.now()): MemoryDb {
     status: "open",
   };
   const names = ["김하늘", "이도윤", "박서연"];
-  return {
+  const db: MemoryDb = {
     exams: [exam],
     candidates: ["demo", "demo2", "demo3"].map((t, i) => ({
       id: `demo-c${i + 1}`, exam_id: exam.id, name: names[i], access_token: t,
@@ -62,9 +66,36 @@ export function demoDb(now = Date.now()): MemoryDb {
     finals: [],
     admins: new Map([[MEMORY_ADMIN_ID, { name: "데모 관리자" }]]),
   };
+  if (opts.simulated) addSimulated(db, exam, opts.simulated, now);
+  return db;
 }
 
-export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingStore & { db: MemoryDb } {
+function addSimulated(db: MemoryDb, exam: ExamRow, n: number, now: number) {
+  simulateCohort(n, ANSWER_KEY, RUBRICS).forEach((sim, i) => {
+    const candidateId = `sim-c${i + 1}`;
+    const attemptId = `sim-a${i + 1}`;
+    const submitted = new Date(now - (n - i) * 3600_000);
+    db.candidates.push({ id: candidateId, exam_id: exam.id, name: sim.name, access_token: `sim-${i + 1}`, employee_no: sim.employee_no, department: sim.department, cohort: "2026-하반기" });
+    db.attempts.push({
+      id: attemptId, candidate_id: candidateId, status: "complete", duration_sec: sim.durationSec,
+      started_at: new Date(submitted.getTime() - sim.durationSec * 1000).toISOString(), submitted_at: submitted.toISOString(),
+    });
+    const responses = sim.responses.map((r) => ({ ...r, id: crypto.randomUUID() }));
+    db.responses.set(attemptId, responses);
+    const { detail, reliability } = scoreSubmission(sim.responses, ANSWER_KEY, sim.essayScores);
+    db.reliability.set(attemptId, reliability);
+    for (const e of ESSAY_ITEMS) {
+      const resp = responses.find((r) => r.item_id === e.id)!;
+      db.finals.push({ response_id: resp.id, ai_grading_id: null, grader_id: MEMORY_ADMIN_ID, criterion_scores: sim.essayCriteria[e.id], score: sim.essayScores[e.id], override_reason: null, confirmed_at: submitted.toISOString() });
+    }
+    db.results.set(attemptId, {
+      knowledge_score: detail.knowledge, practice_score: detail.practice, total: detail.total, grade: detail.grade,
+      ai_type: detail.aiType?.name ?? null, detail, status: "complete", feedback: null,
+    });
+  });
+}
+
+export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingStore & ReportStore & { db: MemoryDb } {
   const clone = structuredClone;
   const candidateOf = (a: AttemptRow) => db.candidates.find((c) => c.id === a.candidate_id)!;
   const info = (c: Candidate): CandidateInfo => ({ name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort });
@@ -197,6 +228,54 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
     async updateResults(attemptId, update) {
       const r = db.results.get(attemptId);
       if (r) db.results.set(attemptId, { ...r, ...clone(update) });
+    },
+
+    async getReport(attemptId) {
+      const a = db.attempts.find((x) => x.id === attemptId);
+      if (!a) return null;
+      const c = candidateOf(a);
+      const exam = db.exams.find((e) => e.id === c.exam_id)!;
+      const r = db.results.get(a.id);
+      return {
+        attemptId: a.id, status: a.status, submittedAt: a.submitted_at, durationSec: a.duration_sec, reliability: clone(db.reliability.get(a.id) ?? null),
+        candidate: info(c), exam: { id: exam.id, title: exam.title, show_result: exam.show_result },
+        result: r ? { status: r.status, detail: clone(r.detail), feedback: clone(r.feedback ?? null) } : null,
+      };
+    },
+
+    async getCohort(examId) {
+      return db.attempts.flatMap((a): CohortMember[] => {
+        const r = db.results.get(a.id);
+        if (!r || r.status !== "complete" || candidateOf(a).exam_id !== examId) return [];
+        const tops = (r.detail as { tops: { id: string; score: number | null }[] }).tops;
+        return [{
+          attemptId: a.id, total: r.total!, knowledge: r.knowledge_score, practice: r.practice_score!,
+          tops: Object.fromEntries(tops.filter((t) => t.score != null).map((t) => [t.id, t.score as number])),
+        }];
+      });
+    },
+
+    async listResults() {
+      return [...db.candidates].sort((x, y) => x.employee_no.localeCompare(y.employee_no)).map((c): ResultRow => {
+        const a = db.attempts.find((x) => x.candidate_id === c.id);
+        const r = a ? db.results.get(a.id) : undefined;
+        return {
+          candidateId: c.id, candidate: info(c), exam: { id: c.exam_id, title: db.exams.find((e) => e.id === c.exam_id)!.title },
+          attempt: a ? { id: a.id, status: a.status, submittedAt: a.submitted_at, reliability: clone(db.reliability.get(a.id) ?? null) } : null,
+          result: r
+            ? { status: r.status, total: r.total ?? null, grade: r.grade ?? null, aiType: r.ai_type ?? null, knowledge: r.knowledge_score, practice: r.practice_score ?? null, feedbackStatus: r.feedback?.status ?? null }
+            : null,
+        };
+      });
+    },
+
+    async listExams() {
+      return db.exams.map((e) => ({ id: e.id, title: e.title }));
+    },
+
+    async saveFeedback(attemptId, feedback) {
+      const r = db.results.get(attemptId);
+      if (r) r.feedback = clone(feedback);
     },
   };
 }

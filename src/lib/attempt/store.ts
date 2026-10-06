@@ -1,12 +1,12 @@
 // 저장소 선택 (서버 전용)
 import "server-only";
 
-import { createMemoryStore } from "./memory-store";
+import { createMemoryStore, demoDb } from "./memory-store";
 import { createSupabaseStore } from "./supabase-store";
-import type { ExamStore, GradingStore } from "./types";
+import type { ExamStore, GradingStore, ReportStore } from "./types";
 
 // EXAM_STORE=memory | supabase. 지정하지 않으면 Supabase 서버 키가 있을 때 supabase, 없으면 memory(개발 전용).
-type Store = ExamStore & GradingStore;
+type Store = ExamStore & GradingStore & ReportStore;
 const g = globalThis as unknown as { __examStore?: Store };
 
 export function storeMode(): "memory" | "supabase" {
@@ -31,7 +31,8 @@ export function getStore(): Store {
   if (g.__examStore) return g.__examStore;
   if (storeMode() === "memory") {
     // 개발 서버의 HMR 에서도 데이터가 유지되도록 전역에 둔다
-    return (g.__examStore = createMemoryStore());
+    // 동기 분포·상위 % 를 확인할 수 있게 가상 응시자 30명을 채점 완료 상태로 넣는다
+    return (g.__examStore = createMemoryStore(demoDb(Date.now(), { simulated: 30 })));
   }
   const url = supabaseUrl();
   const key = supabaseKey();
