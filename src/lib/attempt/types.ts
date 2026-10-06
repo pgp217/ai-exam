@@ -164,6 +164,7 @@ export interface Feedback {
   summary: string;
   actions: FeedbackAction[];
   model: string;
+  prompt_version?: string;
   generated_at: string;
   approved_by?: string | null;
   approved_at?: string | null;

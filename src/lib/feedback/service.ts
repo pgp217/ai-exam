@@ -9,7 +9,7 @@ import { getStore } from "../attempt/store";
 import type { Feedback, FeedbackAction } from "../attempt/types";
 import { graderMode } from "../grading/mode";
 import { feedbackWithClaude } from "./claude";
-import { buildFeedbackPrompt, fakeFeedback, normalizeFeedback } from "./feedback";
+import { FEEDBACK_PROMPT_VERSION, buildFeedbackPrompt, fakeFeedback, normalizeFeedback } from "./feedback";
 
 const basisOf = (r: ExamResult) => ({ total: r.total, practice: r.practice });
 const sameBasis = (a: Feedback["basis"], b: Feedback["basis"]) => a.total === b.total && a.practice === b.practice;
@@ -34,14 +34,23 @@ export async function generateFeedback(attemptId: string, opts: { force?: boolea
     const essays = ESSAY_ITEMS.flatMap((e) => {
       const resp = review.responses.find((r) => r.item_id === e.id);
       const final = review.finals.find((f) => f.response_id === resp?.id);
-      return final ? [{ itemId: e.id, criterionScores: final.criterion_scores, rubric: rubricFor(e.id) }] : [];
+      if (!final) return [];
+      // 확정 점수가 AI 점수와 같은 기준만, AI 가 답안을 보고 쓴 판단 이유를 사실 근거로 넘긴다
+      const ai = review.aiGradings.find((g) => g.id === final.ai_grading_id);
+      const observed = ai
+        ? Object.fromEntries(Object.entries(ai.reasons).filter(([k]) => ai.criterion_scores[k] === final.criterion_scores[k]))
+        : undefined;
+      return [{ itemId: e.id, criterionScores: final.criterion_scores, rubric: rubricFor(e.id), observed }];
     });
     const res = await feedbackWithClaude(buildFeedbackPrompt(result, essays));
     content = normalizeFeedback(res.output);
     model = res.model;
   }
 
-  await store.saveFeedback(attemptId, { status: "draft", ...content, model, generated_at: new Date().toISOString(), basis: basisOf(result) });
+  await store.saveFeedback(attemptId, {
+    status: "draft", ...content, model, prompt_version: mode === "fake" ? undefined : FEEDBACK_PROMPT_VERSION,
+    generated_at: new Date().toISOString(), basis: basisOf(result),
+  });
   return { ok: true };
 }
 
@@ -95,6 +104,7 @@ export async function saveReviewedFeedback(input: {
     summary,
     actions,
     model: prev?.model ?? "manual",
+    prompt_version: prev?.prompt_version,
     generated_at: prev?.generated_at ?? now,
     approved_by: input.approve ? input.adminId : null,
     approved_at: input.approve ? now : null,
