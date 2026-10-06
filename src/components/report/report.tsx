@@ -1,7 +1,7 @@
 // 개인 결과 리포트. 응시자 화면(/t/[token])과 관리자 화면에서 함께 쓴다 (서버 컴포넌트).
 
 import { AI_TYPES, TYPE_THRESHOLDS, type Band, type ExamResult } from "@/lib/exam/scoring";
-import { CHAPTERS, chapterUrl, type ChapterId } from "@/lib/exam/factors";
+import { CHAPTERS, type ChapterId } from "@/lib/exam/factors";
 import { BIN_WIDTH, MIN_COHORT, type CohortView, type Histogram } from "@/lib/report/build";
 import type { Feedback } from "@/lib/attempt/types";
 
@@ -261,9 +261,7 @@ function FeedbackSection({ feedback, pending }: { feedback: Feedback | null; pen
                 <p className="font-semibold"><span className="mr-1 text-zinc-400">{i + 1}.</span>{a.title}</p>
                 <p className="mt-1 text-sm leading-relaxed text-zinc-700 dark:text-zinc-300">{a.detail}</p>
                 {a.chapter && a.chapter in CHAPTERS && (
-                  <a href={chapterUrl(a.chapter as ChapterId)} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm underline">
-                    {CHAPTERS[a.chapter as ChapterId].title}
-                  </a>
+                  <p className="mt-2 text-sm text-zinc-500">교재 · {CHAPTERS[a.chapter as ChapterId].title}</p>
                 )}
               </li>
             ))}
@@ -285,10 +283,8 @@ function Review({ result }: { result: ExamResult }) {
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {result.review.map((c) => (
-            <li key={c.id}>
-              <a href={c.url} target="_blank" rel="noreferrer" className="flex items-center justify-between rounded-lg border border-zinc-200 px-3 py-2 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
-                <span>{c.title}</span><span aria-hidden className="text-zinc-400">↗</span>
-              </a>
+            <li key={c.id} className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-zinc-800">
+              {c.title}
             </li>
           ))}
         </ul>

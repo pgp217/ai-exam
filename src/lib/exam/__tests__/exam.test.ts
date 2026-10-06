@@ -120,7 +120,7 @@ describe("scoreAttempt", () => {
     expect(m6.gapNote).toBe("over");
     expect(r.weaknesses[0]).toBe("결과 검증");
     expect(r.review.map((c) => c.id)).toEqual(["ch09"]);
-    expect(r.review[0].url).toBe("https://zakedu.github.io/genai-book/part4/ch09-hallucination/");
+    expect(r.review[0]).toEqual({ id: "ch09", title: "Chapter 9 환각의 이해와 대응" });
   });
 
   it("treats unanswered choice items as wrong", () => {

@@ -1,7 +1,7 @@
 // 채점 엔진 (순수 함수). 정답 키는 호출하는 쪽(서버)에서 넘겨준다.
 
 import {
-  CHAPTERS, MID_FACTORS, TOP_FACTORS, chapterUrl,
+  CHAPTERS, MID_FACTORS, TOP_FACTORS,
   type ChapterId, type MidFactorId, type TopFactorId,
 } from "./factors";
 import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "./items";
@@ -106,7 +106,6 @@ export interface TopResult {
 export interface ReviewChapter {
   id: ChapterId;
   title: string;
-  url: string;
 }
 
 export interface ExamResult {
@@ -194,7 +193,7 @@ export function scoreAttempt(answers: AttemptAnswers, answerKey: Record<string, 
   }
   const review = (Object.keys(CHAPTERS) as ChapterId[])
     .filter((c) => weakChapters.has(c))
-    .map((c) => ({ id: c, title: CHAPTERS[c].title, url: chapterUrl(c) }));
+    .map((c) => ({ id: c, title: CHAPTERS[c].title }));
 
   return {
     status: complete ? "complete" : "grading",
