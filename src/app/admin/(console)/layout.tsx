@@ -14,6 +14,7 @@ export default async function ConsoleLayout({ children }: LayoutProps<"/admin">)
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link href="/admin/grading" className="font-semibold">AI 역량 시험 관리</Link>
           <nav className="flex gap-3 text-sm text-zinc-600 dark:text-zinc-400">
+            <Link href="/admin/exams" className="hover:text-zinc-900 dark:hover:text-zinc-100">시험 관리</Link>
             <Link href="/admin/grading" className="hover:text-zinc-900 dark:hover:text-zinc-100">서술형 채점</Link>
             <Link href="/admin/results" className="hover:text-zinc-900 dark:hover:text-zinc-100">결과 목록</Link>
           </nav>

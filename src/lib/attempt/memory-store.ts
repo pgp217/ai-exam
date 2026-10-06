@@ -6,14 +6,18 @@ import { ESSAY_ITEMS, ITEM_SET_VERSION } from "../exam/items";
 import { simulateCohort } from "../exam/simulate";
 import { mergeResponses, scoreSubmission } from "./responses";
 import type {
-  AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamRow, ExamStore, Feedback, FinalGradingRow, GradingStore, QueueRow,
-  ReportStore, ResponseRow, ResultRow, ResultUpdate,
+  AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
+  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate,
 } from "./types";
 
 interface Candidate extends CandidateInfo {
   id: string;
   exam_id: string;
   access_token: string;
+  email?: string | null;
+  phone?: string | null;
+  joined_at?: string | null;
+  invited_at?: string | null;
 }
 
 type StoredResponse = ResponseRow & { id: string };
@@ -28,6 +32,7 @@ export interface MemoryDb {
   aiGradings: AiGradingRow[];
   finals: FinalGradingRow[];
   admins: Map<string, { name: string }>; // user_id → 관리자
+  notices: Map<string, NoticeTemplate[]>; // exam_id → 안내문
 }
 
 export const MEMORY_ADMIN_ID = "00000000-0000-4000-8000-00000000ad01";
@@ -65,6 +70,7 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
     aiGradings: [],
     finals: [],
     admins: new Map([[MEMORY_ADMIN_ID, { name: "데모 관리자" }]]),
+    notices: new Map(),
   };
   if (opts.simulated) addSimulated(db, exam, opts.simulated, now);
   return db;
@@ -95,7 +101,9 @@ function addSimulated(db: MemoryDb, exam: ExamRow, n: number, now: number) {
   });
 }
 
-export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingStore & ReportStore & { db: MemoryDb } {
+const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (b) => b.toString(16).padStart(2, "0")).join("");
+
+export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingStore & ReportStore & ExamAdminStore & { db: MemoryDb } {
   const clone = structuredClone;
   const candidateOf = (a: AttemptRow) => db.candidates.find((c) => c.id === a.candidate_id)!;
   const info = (c: Candidate): CandidateInfo => ({ name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort });
@@ -276,6 +284,76 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
     async saveFeedback(attemptId, feedback) {
       const r = db.results.get(attemptId);
       if (r) r.feedback = clone(feedback);
+    },
+
+    async listExamSummaries() {
+      return [...db.exams].reverse().map((e): ExamSummary => {
+        const cands = db.candidates.filter((c) => c.exam_id === e.id);
+        const statuses = cands.map((c) => db.attempts.find((a) => a.candidate_id === c.id)?.status).filter(Boolean);
+        return {
+          ...clone(e), candidates: cands.length, started: statuses.length,
+          submitted: statuses.filter((st) => st !== "in_progress").length, complete: statuses.filter((st) => st === "complete").length,
+        };
+      });
+    },
+
+    async getExam(examId) {
+      const e = db.exams.find((x) => x.id === examId);
+      return e ? clone(e) : null;
+    },
+
+    async createExam(input) {
+      const id = crypto.randomUUID();
+      db.exams.push({ id, ...clone(input), status: "draft" });
+      return id;
+    },
+
+    async updateExam(examId, patch) {
+      const e = db.exams.find((x) => x.id === examId);
+      if (e) Object.assign(e, clone(patch));
+    },
+
+    async listCandidates(examId) {
+      return db.candidates
+        .filter((c) => c.exam_id === examId)
+        .sort((x, y) => x.employee_no.localeCompare(y.employee_no))
+        .map((c): AdminCandidate => ({
+          id: c.id, employee_no: c.employee_no, name: c.name, email: c.email ?? null, phone: c.phone ?? null,
+          department: c.department, cohort: c.cohort, joined_at: c.joined_at ?? null, access_token: c.access_token,
+          invited_at: c.invited_at ?? null, attemptStatus: db.attempts.find((a) => a.candidate_id === c.id)?.status ?? null,
+        }));
+    },
+
+    async upsertCandidates(examId, rows) {
+      let inserted = 0;
+      let updated = 0;
+      for (const r of rows) {
+        const existing = db.candidates.find((c) => c.exam_id === examId && c.employee_no === r.employee_no);
+        if (existing) {
+          Object.assign(existing, clone(r));
+          updated++;
+        } else {
+          db.candidates.push({ id: crypto.randomUUID(), exam_id: examId, access_token: newToken(), ...clone(r) });
+          inserted++;
+        }
+      }
+      return { inserted, updated };
+    },
+
+    async deleteCandidate(examId, candidateId) {
+      const i = db.candidates.findIndex((c) => c.id === candidateId && c.exam_id === examId);
+      if (i < 0 || db.attempts.some((a) => a.candidate_id === candidateId)) return false;
+      db.candidates.splice(i, 1);
+      return true;
+    },
+
+    async getNotices(examId) {
+      return clone(db.notices.get(examId) ?? []);
+    },
+
+    async saveNotice(examId, notice) {
+      const list = (db.notices.get(examId) ?? []).filter((n) => n.channel !== notice.channel);
+      db.notices.set(examId, [...list, { ...clone(notice), updated_at: new Date().toISOString() }]);
     },
   };
 }

@@ -4,8 +4,8 @@ import "server-only";
 
 import { ESSAY_ITEMS } from "../exam/items";
 import type {
-  AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamRow, ExamStore, Feedback, FinalGradingRow, GradingStore,
-  QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput,
+  AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
+  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput,
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -32,7 +32,10 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore & ReportStore {
+const EXAM_COLUMNS = "id,title,starts_at,ends_at,time_limit_min,intro_text,show_result,item_set_version,status";
+const UPSERT_CHUNK = 500;
+
+export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore & ReportStore & ExamAdminStore {
   const base = url.replace(/\/+$/, "") + "/rest/v1";
   const headers: Record<string, string> = { apikey: key, "Content-Type": "application/json", Accept: "application/json" };
   // 레거시 service_role 키(JWT)는 Authorization 에도 넣는다. 새 Secret key(sb_secret_...)는 apikey 만 쓴다.
@@ -315,6 +318,80 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
         method: "PATCH",
         body: { feedback },
         prefer: "return=minimal",
+      });
+    },
+
+    // ── 시험·대상자·안내문 관리 ───────────────────────
+    async listExamSummaries() {
+      type Row = ExamRow & { candidates: { attempt: { status: AttemptRow["status"] } | { status: AttemptRow["status"] }[] | null }[] };
+      const rows = await rest<Row[]>(`/exams?select=${EXAM_COLUMNS},candidates(attempt:attempts(status))&order=created_at.desc`);
+      return rows.map(({ candidates, ...exam }): ExamSummary => {
+        const statuses = candidates.map((c) => one(c.attempt)?.status).filter(Boolean);
+        return {
+          ...exam, candidates: candidates.length, started: statuses.length,
+          submitted: statuses.filter((st) => st !== "in_progress").length, complete: statuses.filter((st) => st === "complete").length,
+        };
+      });
+    },
+
+    async getExam(examId) {
+      const rows = await rest<ExamRow[]>(`/exams?id=eq.${encodeURIComponent(examId)}&select=${EXAM_COLUMNS}`);
+      return rows[0] ?? null;
+    },
+
+    async createExam(input, createdBy) {
+      const rows = await rest<{ id: string }[]>("/exams?select=id", {
+        method: "POST",
+        body: { ...input, status: "draft", created_by: createdBy },
+        prefer: "return=representation",
+      });
+      return rows[0].id;
+    },
+
+    async updateExam(examId, patch) {
+      await rest(`/exams?id=eq.${encodeURIComponent(examId)}`, { method: "PATCH", body: patch, prefer: "return=minimal" });
+    },
+
+    async listCandidates(examId) {
+      type Row = Omit<AdminCandidate, "attemptStatus"> & { attempt: { status: AttemptRow["status"] } | { status: AttemptRow["status"] }[] | null };
+      const rows = await rest<Row[]>(
+        `/candidates?exam_id=eq.${encodeURIComponent(examId)}&select=id,employee_no,name,email,phone,department,cohort,joined_at,access_token,invited_at,attempt:attempts(status)&order=employee_no.asc`,
+      );
+      return rows.map(({ attempt, ...c }) => ({ ...c, attemptStatus: one(attempt)?.status ?? null }));
+    },
+
+    async upsertCandidates(examId, rows) {
+      const existing = new Set(
+        (await rest<{ employee_no: string }[]>(`/candidates?exam_id=eq.${encodeURIComponent(examId)}&select=employee_no`)).map((r) => r.employee_no),
+      );
+      for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
+        await rest("/candidates?on_conflict=exam_id,employee_no", {
+          method: "POST",
+          body: rows.slice(i, i + UPSERT_CHUNK).map((r) => ({ exam_id: examId, ...r })),
+          prefer: "resolution=merge-duplicates,return=minimal",
+        });
+      }
+      const updated = rows.filter((r) => existing.has(r.employee_no)).length;
+      return { inserted: rows.length - updated, updated };
+    },
+
+    async deleteCandidate(examId, candidateId) {
+      const q = `id=eq.${encodeURIComponent(candidateId)}&exam_id=eq.${encodeURIComponent(examId)}`;
+      const rows = await rest<{ attempt: unknown }[]>(`/candidates?${q}&select=attempt:attempts(id)`);
+      if (!rows[0] || one(rows[0].attempt as { id: string } | { id: string }[] | null)) return false;
+      await rest(`/candidates?${q}`, { method: "DELETE", prefer: "return=minimal" });
+      return true;
+    },
+
+    async getNotices(examId) {
+      return rest<NoticeTemplate[]>(`/notice_templates?exam_id=eq.${encodeURIComponent(examId)}&select=channel,subject,body,updated_at`);
+    },
+
+    async saveNotice(examId, notice) {
+      await rest("/notice_templates?on_conflict=exam_id,channel", {
+        method: "POST",
+        body: { exam_id: examId, channel: notice.channel, subject: notice.subject, body: notice.body, updated_at: new Date().toISOString() },
+        prefer: "resolution=merge-duplicates,return=minimal",
       });
     },
   };
