@@ -76,8 +76,12 @@ export function noticeVars(input: { name: string; title: string; starts_at: stri
   };
 }
 
-/** CSV 한 칸 (따옴표·쉼표·줄바꿈 처리) */
+/**
+ * CSV 한 칸 (따옴표·쉼표·줄바꿈 처리).
+ * =, +, -, @ 등으로 시작하면 엑셀이 수식으로 실행할 수 있어 앞에 ' 를 붙여 글자로 연다 (CSV 수식 주입 방지).
+ */
 export function csvCell(v: string | null | undefined): string {
-  const s = v ?? "";
+  let s = v ?? "";
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
