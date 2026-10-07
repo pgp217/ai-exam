@@ -1,4 +1,4 @@
-// 실제 PostgREST(로컬 Postgres + 마이그레이션 0001~0003 + 가상 응시자 시드)에 대해 저장소 쿼리를 확인한다.
+// 실제 PostgREST(로컬 Postgres + 마이그레이션 0001~0004 + 가상 응시자 시드)에 대해 저장소 쿼리를 확인한다.
 // 기본 npm test 에서는 건너뛴다. 실행: STORE_IT_URL=http://127.0.0.1:3900 STORE_IT_KEY=<service JWT> STORE_IT_EXAM=<exam_id> npx vitest run supabase-store
 import { describe, expect, it } from "vitest";
 import { createSupabaseStore } from "../supabase-store";
@@ -73,6 +73,24 @@ describe.skipIf(!url || !key)("supabase store exam admin (integration)", () => {
       const t2 = after.find((c) => c.employee_no === "T2")!;
       expect(await store.deleteCandidate(examId, t2.id)).toBe(true);
       expect(await store.deleteCandidate("00000000-0000-0000-0000-000000000000", t1.id)).toBe(false); // 다른 시험
+
+      // 재응시: 이전 응시를 보관하고 지운 뒤 같은 링크로 다시 응시
+      const until = "2027-01-20T09:00:00.000Z";
+      expect(await store.resetAttempt("00000000-0000-0000-0000-000000000000", t1.id, { reason: "오류", adminId: null, retakeUntil: null })).toBe(false); // 다른 시험
+      expect(await store.resetAttempt(examId, t1.id, { reason: "화면 멈춤", adminId: null, retakeUntil: until })).toBe(true);
+      expect(await store.resetAttempt(examId, t1.id, { reason: "다시", adminId: null, retakeUntil: null })).toBe(false); // 응시 기록 없음
+      const reset = (await store.listCandidates(examId)).find((c) => c.id === t1.id)!;
+      expect(reset).toMatchObject({ attemptStatus: null, retakes: [{ status: "in_progress", grade: null, reason: "화면 멈춤", scores_cleared_at: null }] });
+      expect(Date.parse(reset.retake_until!)).toBe(Date.parse(until));
+      expect((await store.findSession(t1.access_token))).toMatchObject({ attempt: null, responses: [] });
+      expect(Date.parse((await store.findSession(t1.access_token))!.candidate.retake_until!)).toBe(Date.parse(until));
+      const archiveId = reset.retakes[0].id;
+      expect(await store.clearArchiveScores("00000000-0000-0000-0000-000000000000", t1.id, archiveId)).toBe(false); // 다른 시험
+      expect(await store.clearArchiveScores(examId, t1.id, archiveId)).toBe(true);
+      expect(await store.clearArchiveScores(examId, t1.id, archiveId)).toBe(false); // 이미 지움
+      expect((await store.listCandidates(examId)).find((c) => c.id === t1.id)!.retakes[0].scores_cleared_at).not.toBeNull();
+      await store.startAttempt(t1.id);
+      expect((await store.listCandidates(examId)).find((c) => c.id === t1.id)!.attemptStatus).toBe("in_progress");
 
       await store.saveNotice(examId, { channel: "email", subject: "제목", body: "본문" });
       await store.saveNotice(examId, { channel: "email", subject: "제목2", body: "본문2" });

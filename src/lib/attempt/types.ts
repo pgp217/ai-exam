@@ -34,7 +34,7 @@ export interface ResponseRow {
 }
 
 export interface Session {
-  candidate: { id: string; name: string };
+  candidate: { id: string; name: string; retake_until: string | null };
   exam: ExamRow;
   attempt: AttemptRow | null;
   responses: ResponseRow[];
@@ -229,6 +229,24 @@ export interface AdminCandidate {
   access_token: string;
   invited_at: string | null;
   attemptStatus: AttemptStatus | null;
+  retake_until: string | null;
+  retakes: RetakeRecord[]; // 이전 응시 보관 기록 (최근 순)
+}
+
+/** 재응시를 허용하며 보관한 이전 응시 */
+export interface RetakeRecord {
+  id: string;
+  status: AttemptStatus; // 보관 시점의 응시 상태
+  grade: string | null;
+  reason: string;
+  archived_at: string;
+  scores_cleared_at: string | null; // 이전 AI 채점·확정 점수를 지운 시각
+}
+
+export interface RetakeInput {
+  reason: string;
+  adminId: string | null;
+  retakeUntil: string | null; // 시험 기간이 끝났을 때 이 대상자만 응시할 수 있는 마감 (ISO)
 }
 
 export interface CandidateUpsert {
@@ -260,6 +278,10 @@ export interface ExamAdminStore {
   upsertCandidates(examId: string, rows: CandidateUpsert[]): Promise<{ inserted: number; updated: number }>;
   /** 응시 기록이 있으면 지우지 않고 false */
   deleteCandidate(examId: string, candidateId: string): Promise<boolean>;
+  /** 이전 응시를 보관하고 지워 같은 링크로 다시 응시하게 한다. 응시 기록이 없으면 false */
+  resetAttempt(examId: string, candidateId: string, input: RetakeInput): Promise<boolean>;
+  /** 보관본의 AI 채점·확정 점수·결과만 지운다 (응답 원문·사유는 남김). 없거나 이미 지웠으면 false */
+  clearArchiveScores(examId: string, candidateId: string, archiveId: string): Promise<boolean>;
   getNotices(examId: string): Promise<NoticeTemplate[]>;
   saveNotice(examId: string, notice: NoticeTemplate): Promise<void>;
 }

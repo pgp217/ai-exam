@@ -92,8 +92,8 @@ export default function ExamRunner({ token, title, candidateName, deadline, serv
           body: JSON.stringify({ responses: rows }),
           keepalive: opts.keepalive,
         });
-        if (res.status === 409) {
-          // 시간이 끝났거나 다른 창에서 제출함 → 서버 상태로 다시 그린다
+        if (res.status === 409 || res.status === 404) {
+          // 시간이 끝났거나 다른 창에서 제출함, 또는 담당자가 재응시를 허용해 응시가 초기화됨 → 서버 상태로 다시 그린다
           doneRef.current = true;
           router.refresh();
           return;
@@ -127,7 +127,7 @@ export default function ExamRunner({ token, title, candidateName, deadline, serv
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ responses: rowsFor(Object.keys(answersRef.current)) }),
       });
-      if (!res.ok && res.status !== 409) throw new Error((await res.json().catch(() => null))?.error ?? "제출하지 못했습니다.");
+      if (!res.ok && res.status !== 409 && res.status !== 404) throw new Error((await res.json().catch(() => null))?.error ?? "제출하지 못했습니다.");
       router.refresh();
     } catch (e) {
       doneRef.current = false;

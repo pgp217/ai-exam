@@ -48,6 +48,7 @@
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
 | `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
 | `supabase/migrations/0003_report_feedback.sql` | `results.feedback` (성장 피드백 저장) |
+| `supabase/migrations/0004_retake.sql` | 재응시: 이전 응시 보관(`attempt_archives`), 대상자별 재응시 마감(`candidates.retake_until`), `reset_attempt` · `clear_archive_scores` 함수 |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
 
 ## 개발
@@ -91,7 +92,7 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 
 ## Supabase 설정
 
-1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql`, `0003_report_feedback.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
+1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql`, `0003_report_feedback.sql`, `0004_retake.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
 2. Authentication 에서 관리자 계정을 만든 뒤(Auto Confirm User 체크) `admins` 테이블에 등록
    ```sql
    insert into public.admins (user_id, name) values ('<auth.users 의 id>', '관리자 이름');
@@ -114,7 +115,18 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 3. **안내**: 안내문 CSV 를 내려받아 사내 메일·문자 도구로 보낸다 (앱은 직접 보내지 않음)
 4. **채점** (`/admin/grading`): 제출 후 1분 안에 AI 1차 채점이 끝나면 "검토 대기". 담당자가 문항별로 확정한다
 5. **리포트** (`/admin/results`): 세 문항이 확정되면 리포트가 생기고 AI 성장 피드백 초안이 만들어진다. 확인 후 **승인하고 공개**하면 결과 공개 시험의 응시자가 자기 응시 링크에서 본다
-6. **마감**: 응시 기간이 끝나면 자동으로 응시를 받지 않는다. 시험 화면의 **마감하기**로 일찍 닫을 수도 있다
+6. **재응시** (필요할 때): 아래 "재응시" 참고
+7. **마감**: 응시 기간이 끝나면 자동으로 응시를 받지 않는다. 시험 화면의 **마감하기**로 일찍 닫을 수도 있다
+
+### 재응시
+응시 중 오류 등으로 다시 봐야 하는 대상자는 시험의 **대상자** 화면에서 그 사람 줄의 **재응시**를 누른다.
+- **재응시 사유는 필수**다. 나중에 오류 원인을 찾을 때 쓴다.
+- 이전 응시(응답 원문, AI 채점, 확정 점수, 결과)는 지우지 않고 `attempt_archives` 에 보관한다. 대상자는 **같은 응시 링크**로 처음부터 다시 응시한다. 응시 중이던 화면은 다음 자동 저장 때 첫 화면으로 돌아간다.
+- 시험이 **열려 있을 때만** 허용할 수 있다. 응시 기간이 끝났거나 남은 기간이 제한 시간보다 짧으면 **재응시 마감**(한국 시간)을 정해야 하고, 그 대상자만 그때까지 응시할 수 있다.
+- 이전 응시는 동기 비교(상위 %, 분포)와 결과 목록에서 빠진다. 대상자 목록에는 "재응시 n회"로 표시되고, **재응시 기록**에서 보관 시각·당시 상태·등급·사유를 볼 수 있다.
+- 재응시 점수가 **확정된 뒤** **이전 채점 기록 삭제**를 누르면 보관본의 AI 채점·확정 점수·결과만 지운다. 응답 원문과 사유는 남는다. 되돌릴 수 없다.
+- 이전 응시 기록이 있는 대상자는 삭제할 수 없다.
+- 보관본 전체(JSON)는 SQL Editor 에서 `select reason, archived_at, snapshot from public.attempt_archives order by archived_at desc;` 로 본다.
 
 ### 환경 변수 (Vercel)
 | 이름 | 용도 |
@@ -135,7 +147,7 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 npx tsx scripts/export-scoring-config.mts > /tmp/scoring-config.json
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/crosscheck.py /tmp/scoring-config.json
 ```
-저장된 모든 결과(지식·실전·상위요인·종합 점수, 등급, 유형, 서술형 기준 환산, 상태)를 독립 계산과 대조하고, 불일치가 있으면 종료 코드 1로 끝난다.
+저장된 모든 결과(지식·실전·상위요인·종합 점수, 등급, 유형, 서술형 기준 환산, 상태)를 독립 계산과 대조하고, 불일치가 있으면 종료 코드 1로 끝난다. 재응시한 대상자는 점검에서 빼고, 뺀 인원을 따로 출력한다.
 
 ### 보안 점검 요약
 - DB: `anon` 은 모든 테이블·함수 접근 거부. 로그인했지만 관리자가 아닌 사용자는 행 단위 보안으로 0건 조회, 쓰기 거부. 응시 저장·제출 함수는 서버(service_role)만 호출

@@ -1,21 +1,31 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { Fragment, useActionState, useMemo, useState } from "react";
 import type { AdminCandidate } from "@/lib/attempt/types";
 import { withoutRow } from "@/lib/exams/candidates";
 import type { ImportPreview } from "@/lib/exams/service";
-import { addCandidateAction, confirmImportAction, deleteCandidateAction, previewImportAction, type ExamFormState } from "../../actions";
+import {
+  addCandidateAction, clearRetakeScoresAction, confirmImportAction, deleteCandidateAction, grantRetakeAction, previewImportAction, type ExamFormState,
+} from "../../actions";
 import { FormMessage, inputClass } from "../../fields";
 
 const initial: ExamFormState = { ok: false, message: null };
 const STATUS: Record<string, string> = { none: "미응시", in_progress: "응시 중", submitted: "제출", grading: "채점 중", complete: "채점 완료" };
+const fmt = new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "short", timeZone: "Asia/Seoul" });
 
-export default function CandidatesPanel({ examId, candidates, origin }: { examId: string; candidates: AdminCandidate[]; origin: string }) {
+/** 재응시 화면에 보여 줄 시험 정보 */
+export interface RetakeExam {
+  ends_at: string;
+  time_limit_min: number;
+  status: "draft" | "open" | "closed";
+}
+
+export default function CandidatesPanel({ examId, exam, candidates, origin }: { examId: string; exam: RetakeExam; candidates: AdminCandidate[]; origin: string }) {
   return (
     <div className="space-y-6">
       <Upload examId={examId} />
       <AddOne examId={examId} />
-      <List examId={examId} candidates={candidates} origin={origin} />
+      <List examId={examId} exam={exam} candidates={candidates} origin={origin} />
     </div>
   );
 }
@@ -121,7 +131,8 @@ function AddOne({ examId }: { examId: string }) {
 }
 
 // ── 대상자 목록 ─────────────────────────────────────────
-function List({ examId, candidates, origin }: { examId: string; candidates: AdminCandidate[]; origin: string }) {
+function List({ examId, exam, candidates, origin }: { examId: string; exam: RetakeExam; candidates: AdminCandidate[]; origin: string }) {
+  const [openRetake, setOpenRetake] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [dept, setDept] = useState("");
   const [cohort, setCohort] = useState("");
@@ -175,21 +186,35 @@ function List({ examId, candidates, origin }: { examId: string; candidates: Admi
           </thead>
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {rows.map((c) => (
-              <tr key={c.id}>
+              <Fragment key={c.id}>
+              <tr>
                 <td className="px-3 py-2 tabular-nums">{c.employee_no}</td>
                 <td className="px-3 py-2 font-medium">{c.name}</td>
                 <td className="px-3 py-2 text-zinc-600">{c.department ?? "—"}</td>
                 <td className="px-3 py-2 text-zinc-600">{c.cohort ?? "—"}</td>
                 <td className="px-3 py-2 text-zinc-600">{c.email ?? "—"}</td>
                 <td className="px-3 py-2 tabular-nums text-zinc-600">{c.phone ?? "—"}</td>
-                <td className="px-3 py-2 text-xs">{STATUS[c.attemptStatus ?? "none"]}</td>
+                <td className="px-3 py-2 text-xs">
+                  {STATUS[c.attemptStatus ?? "none"]}
+                  {c.retakes.length > 0 && <span className="ml-1 rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">재응시 {c.retakes.length}회</span>}
+                </td>
                 <td className="px-3 py-2">
                   <button type="button" onClick={() => copy(c)} className="rounded border border-zinc-300 px-2 py-0.5 text-xs dark:border-zinc-700">
                     {copied === c.id ? "복사됨" : "링크 복사"}
                   </button>
                 </td>
-                <td className="px-3 py-2 text-right">
-                  {!c.attemptStatus && (
+                <td className="space-x-3 whitespace-nowrap px-3 py-2 text-right">
+                  {(c.attemptStatus || c.retakes.length > 0) && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenRetake(openRetake === c.id ? null : c.id)}
+                      aria-expanded={openRetake === c.id}
+                      className="text-xs underline"
+                    >
+                      {c.attemptStatus ? "재응시" : "재응시 기록"}
+                    </button>
+                  )}
+                  {!c.attemptStatus && c.retakes.length === 0 && (
                     <form action={del} onSubmit={(e) => { if (!confirm(`${c.name}(${c.employee_no})을 삭제할까요?`)) e.preventDefault(); }}>
                       <input type="hidden" name="examId" value={examId} />
                       <input type="hidden" name="candidateId" value={c.id} />
@@ -198,10 +223,118 @@ function List({ examId, candidates, origin }: { examId: string; candidates: Admi
                   )}
                 </td>
               </tr>
+              {openRetake === c.id && (
+                <tr className="bg-zinc-50 dark:bg-zinc-900">
+                  <td colSpan={9} className="px-3 py-3">
+                    <Retake examId={examId} exam={exam} candidate={c} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
       </div>
     </section>
+  );
+}
+
+// ── 재응시 ────────────────────────────────────────────
+// 이전 응시는 보관하고 같은 링크로 처음부터 다시 응시하게 한다. 사유는 필수.
+function Retake({ examId, exam, candidate: c }: { examId: string; exam: RetakeExam; candidate: AdminCandidate }) {
+  const [state, action, pending] = useActionState(grantRetakeAction, initial);
+  const [clearState, clear, clearing] = useActionState(clearRetakeScoresAction, initial);
+  const canClear = c.attemptStatus === "complete";
+
+  return (
+    <div className="space-y-4 text-sm">
+      {c.attemptStatus && (
+        <form
+          action={action}
+          onSubmit={(e) => { if (!confirm(`${c.name}(${c.employee_no})의 현재 응시를 보관하고 재응시를 허용할까요?`)) e.preventDefault(); }}
+          className="space-y-2"
+        >
+          <input type="hidden" name="examId" value={examId} />
+          <input type="hidden" name="candidateId" value={c.id} />
+          <p className="font-medium">재응시 허용</p>
+          <p className="text-xs text-zinc-500">
+            현재 응시({STATUS[c.attemptStatus]})의 응답·AI 채점·확정 점수는 지우지 않고 보관합니다. 대상자는 같은 응시 링크로 처음부터 다시 응시합니다.
+            {c.attemptStatus === "in_progress" && " 지금 응시 중인 화면은 다음 저장 때 처음 화면으로 돌아갑니다."}
+          </p>
+          <label className="block space-y-1">
+            <span className="text-xs text-zinc-500">재응시 사유*</span>
+            <textarea
+              name="reason"
+              required
+              maxLength={500}
+              rows={2}
+              defaultValue={state.ok ? "" : state.values?.reason}
+              placeholder="예: 응시 중 화면이 멈춰 서술형 답안이 저장되지 않음 (10/7 14:20 문의)"
+              aria-invalid={!!state.fields?.reason}
+              className={`${inputClass} text-sm`}
+            />
+            {state.fields?.reason && <span className="text-xs text-red-600">{state.fields.reason}</span>}
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-zinc-500">재응시 마감 (한국 시간, 선택)</span>
+            <input
+              type="datetime-local"
+              name="until"
+              defaultValue={state.ok ? "" : state.values?.until}
+              aria-invalid={!!state.fields?.until}
+              className={`${inputClass} max-w-xs py-1.5 text-sm`}
+            />
+            <span className={`block text-xs ${state.fields?.until ? "text-red-600" : "text-zinc-500"}`}>
+              {state.fields?.until ??
+                `시험 응시 마감(${fmt.format(new Date(exam.ends_at))})까지 제한 시간 ${exam.time_limit_min}분 이상 남았으면 비워 두세요. 기간이 지났으면 이 대상자만 응시할 수 있는 마감을 정합니다.`}
+            </span>
+          </label>
+          <div className="flex flex-wrap items-center gap-3">
+            <button type="submit" disabled={pending || exam.status !== "open"} className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900">
+              {pending ? "처리 중…" : "재응시 허용"}
+            </button>
+            {exam.status !== "open" && <span className="text-xs text-zinc-500">시험이 열려 있을 때만 허용할 수 있습니다.</span>}
+            <FormMessage ok={state.ok} message={state.ok ? null : state.message} />
+          </div>
+        </form>
+      )}
+      <FormMessage ok={state.ok} message={state.ok ? state.message : null} />
+      {c.retake_until && <p className="text-xs text-zinc-500">이 대상자의 재응시 마감: {fmt.format(new Date(c.retake_until))}</p>}
+
+      {c.retakes.length > 0 && (
+        <div className="space-y-2">
+          <p className="font-medium">이전 응시 기록 {c.retakes.length}건</p>
+          <ul className="space-y-2">
+            {c.retakes.map((r) => (
+              <li key={r.id} className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950">
+                <p className="text-xs text-zinc-500">
+                  {fmt.format(new Date(r.archived_at))} 보관 · 당시 {STATUS[r.status]}
+                  {r.grade && <> · 등급 {r.grade}</>}
+                  {r.scores_cleared_at && <> · 채점 기록 삭제됨 ({fmt.format(new Date(r.scores_cleared_at))})</>}
+                </p>
+                <p className="mt-1 whitespace-pre-wrap">{r.reason}</p>
+                {!r.scores_cleared_at && (
+                  canClear ? (
+                    <form
+                      action={clear}
+                      onSubmit={(e) => { if (!confirm("이 기록의 AI 채점과 확정 점수를 지울까요? 응답 원문과 사유는 남습니다. 되돌릴 수 없습니다.")) e.preventDefault(); }}
+                      className="mt-2"
+                    >
+                      <input type="hidden" name="examId" value={examId} />
+                      <input type="hidden" name="candidateId" value={c.id} />
+                      <input type="hidden" name="archiveId" value={r.id} />
+                      <button type="submit" disabled={clearing} className="text-xs text-red-600 hover:underline disabled:opacity-50">이전 채점 기록 삭제</button>
+                    </form>
+                  ) : (
+                    <p className="mt-2 text-xs text-zinc-500">재응시 점수가 확정되면 이전 AI 채점과 확정 점수를 지울 수 있습니다.</p>
+                  )
+                )}
+              </li>
+            ))}
+          </ul>
+          <FormMessage ok={clearState.ok} message={clearState.message} />
+        </div>
+      )}
+    </div>
   );
 }

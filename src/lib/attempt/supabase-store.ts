@@ -61,6 +61,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
   type CandidateJoin = {
     id: string;
     name: string;
+    retake_until: string | null;
     exam: ExamRow;
     // attempts.candidate_id 가 unique 라 PostgREST 는 객체로 돌려주지만, 배열이어도 처리한다
     attempt: (AttemptRow & { responses: ResponseRow[] }) | (AttemptRow & { responses: ResponseRow[] })[] | null;
@@ -72,7 +73,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
     // ── 응시 ─────────────────────────────────────────
     async findSession(token) {
       const select = [
-        "id,name",
+        "id,name,retake_until",
         "exam:exams(id,title,starts_at,ends_at,time_limit_min,intro_text,show_result,item_set_version,status)",
         "attempt:attempts(id,candidate_id,started_at,submitted_at,duration_sec,status,responses(item_id,answer,response_ms,pasted))",
       ].join(",");
@@ -81,7 +82,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       if (!c) return null;
       const a = one(c.attempt);
       const session: Session = {
-        candidate: { id: c.id, name: c.name },
+        candidate: { id: c.id, name: c.name, retake_until: c.retake_until },
         exam: c.exam,
         attempt: a ? { id: a.id, candidate_id: a.candidate_id, started_at: a.started_at, submitted_at: a.submitted_at, duration_sec: a.duration_sec, status: a.status } : null,
         responses: a?.responses ?? [],
@@ -354,8 +355,13 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
 
     async listCandidates(examId) {
       type Row = Omit<AdminCandidate, "attemptStatus"> & { attempt: { status: AttemptRow["status"] } | { status: AttemptRow["status"] }[] | null };
+      const select = [
+        "id,employee_no,name,email,phone,department,cohort,joined_at,access_token,invited_at,retake_until",
+        "attempt:attempts(status)",
+        "retakes:attempt_archives(id,status,grade,reason,archived_at,scores_cleared_at)",
+      ].join(",");
       const rows = await rest<Row[]>(
-        `/candidates?exam_id=eq.${encodeURIComponent(examId)}&select=id,employee_no,name,email,phone,department,cohort,joined_at,access_token,invited_at,attempt:attempts(status)&order=employee_no.asc`,
+        `/candidates?exam_id=eq.${encodeURIComponent(examId)}&select=${select}&order=employee_no.asc&retakes.order=archived_at.desc`,
       );
       return rows.map(({ attempt, ...c }) => ({ ...c, attemptStatus: one(attempt)?.status ?? null }));
     },
@@ -381,6 +387,23 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       if (!rows[0] || one(rows[0].attempt as { id: string } | { id: string }[] | null)) return false;
       await rest(`/candidates?${q}`, { method: "DELETE", prefer: "return=minimal" });
       return true;
+    },
+
+    async resetAttempt(examId, candidateId, input) {
+      const rows = await rest<{ id: string }[]>(`/candidates?id=eq.${encodeURIComponent(candidateId)}&exam_id=eq.${encodeURIComponent(examId)}&select=id`);
+      if (!rows[0]) return false;
+      return rest<boolean>("/rpc/reset_attempt", {
+        method: "POST",
+        body: { p_candidate_id: candidateId, p_reason: input.reason, p_admin: input.adminId, p_retake_until: input.retakeUntil },
+      });
+    },
+
+    async clearArchiveScores(examId, candidateId, archiveId) {
+      const rows = await rest<{ id: string }[]>(
+        `/attempt_archives?id=eq.${encodeURIComponent(archiveId)}&candidate_id=eq.${encodeURIComponent(candidateId)}&select=id,candidate:candidates!inner(exam_id)&candidate.exam_id=eq.${encodeURIComponent(examId)}`,
+      );
+      if (!rows[0]) return false;
+      return rest<boolean>("/rpc/clear_archive_scores", { method: "POST", body: { p_archive_id: archiveId } });
     },
 
     async getNotices(examId) {

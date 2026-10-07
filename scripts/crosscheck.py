@@ -2,6 +2,7 @@
 #   npx tsx scripts/export-scoring-config.mts > /tmp/scoring-config.json
 #   SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... python3 scripts/crosscheck.py /tmp/scoring-config.json
 # 가상 응시자(사번 SIM-)는 서술형 확정 기록 없이 결과만 있으므로, 결과에 저장된 서술형 점수로 나머지 계산을 검증한다.
+# 재응시한 대상자(attempt_archives 에 이전 응시가 있음)는 점검에서 빼고 인원만 알려 준다.
 import json, math, os, sys, urllib.request
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -30,13 +31,15 @@ TYPES = {("high","low"):"직관형 활용가",("high","mid"):"실전 성장가",
          ("low","low"):"AI 입문자",("low","mid"):"기초 학습자",("low","high"):"이론 우선형"}
 
 key = cfg["answerKey"]; choice = cfg["choice"]; essays = cfg["essays"]; midTop = cfg["midTop"]
-rows = get("/attempts?status=neq.in_progress&select=id,status,candidate:candidates(name,employee_no),"
+rows = get("/attempts?status=neq.in_progress&select=id,status,candidate:candidates(name,employee_no,retakes:attempt_archives(id)),"
            "result:results(status,knowledge_score,practice_score,total,grade,ai_type,detail),"
            "responses(id,item_id,answer,final_gradings(score,criterion_scores),ai_gradings(score,criterion_scores))")
 one = lambda v: v[0] if isinstance(v, list) and v else (v if not isinstance(v, list) else None)
 
-problems, checked, complete, sims_checked = [], 0, 0, []
+problems, checked, complete, sims_checked, retakes_skipped = [], 0, 0, [], []
 for a in rows:
+    if a["candidate"]["retakes"]:
+        retakes_skipped.append(a["candidate"]["name"]); continue
     name = a["candidate"]["name"]; res = one(a["result"]); checked += 1
     resp = {r["item_id"]: r for r in a["responses"]}
     if not res: problems.append(f"{name}: 결과 행 없음"); continue
@@ -88,5 +91,6 @@ for a in rows:
     for t, v in tops.items(): ok(abs(float(dt[t]) - v) < 1e-9, f"상위요인 {t} {dt[t]} ≠ 재계산 {v}")
 
 print(f"점검한 응시 {checked}건 (채점 완료 {complete}건, 그중 가상 {len(sims_checked)}건은 결과 내부 서술형 점수로 검증)")
+if retakes_skipped: print(f"재응시 {len(retakes_skipped)}건은 점검에서 뺐습니다: {', '.join(retakes_skipped)}")
 print("불일치 없음" if not problems else f"불일치 {len(problems)}건:\n  " + "\n  ".join(problems))
 sys.exit(1 if problems else 0)

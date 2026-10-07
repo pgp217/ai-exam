@@ -6,7 +6,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import type { FieldErrors } from "@/lib/exams/form";
 import type { Channel } from "@/lib/exams/notice";
 import {
-  addCandidate, createExam, importCandidates, previewCandidateFile, removeCandidate, saveNotice, setStatus,
+  addCandidate, clearRetakeScores, createExam, grantRetake, importCandidates, previewCandidateFile, removeCandidate, saveNotice, setStatus,
   updateBasic, updateSite, type ImportPreview,
 } from "@/lib/exams/service";
 
@@ -97,6 +97,24 @@ export async function deleteCandidateAction(_prev: ExamFormState, form: FormData
   if (!r.ok) return { ok: false, message: r.error };
   refresh();
   return { ok: true, message: "삭제했습니다." };
+}
+
+const RETAKE = ["reason", "until"];
+
+export async function grantRetakeAction(_prev: ExamFormState, form: FormData): Promise<ExamFormState> {
+  const admin = await requireAdmin();
+  const r = await grantRetake(String(form.get("examId")), String(form.get("candidateId")), { reason: str(form, "reason"), until: str(form, "until") }, admin.id);
+  if (!r.ok) return { ok: false, message: r.error, fields: r.fields, values: echo(form, RETAKE) };
+  refresh();
+  return { ok: true, message: "재응시를 허용했습니다. 이전 응시는 보관했고, 같은 응시 링크로 처음부터 다시 응시할 수 있습니다." };
+}
+
+export async function clearRetakeScoresAction(_prev: ExamFormState, form: FormData): Promise<ExamFormState> {
+  await requireAdmin();
+  const r = await clearRetakeScores(String(form.get("examId")), String(form.get("candidateId")), String(form.get("archiveId")));
+  if (!r.ok) return { ok: false, message: r.error };
+  refresh();
+  return { ok: true, message: "이전 응시의 AI 채점과 확정 점수를 지웠습니다. 응답 원문과 재응시 사유는 남아 있습니다." };
 }
 
 export async function saveNoticeAction(_prev: ExamFormState, form: FormData): Promise<ExamFormState> {
