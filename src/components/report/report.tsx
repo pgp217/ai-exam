@@ -1,7 +1,7 @@
 // 개인 결과 리포트. 응시자 화면(/t/[token])과 관리자 화면에서 함께 쓴다 (서버 컴포넌트).
 
 import { AI_TYPES, TYPE_THRESHOLDS, type Band, type ExamResult } from "@/lib/exam/scoring";
-import { CHAPTERS, type ChapterId } from "@/lib/exam/factors";
+import { BOOK_CREDIT, CHAPTERS, type ChapterId } from "@/lib/exam/factors";
 import { BIN_WIDTH, MIN_COHORT, type CohortView, type Histogram } from "@/lib/report/build";
 import type { Feedback } from "@/lib/attempt/types";
 
@@ -289,6 +289,7 @@ function Review({ result }: { result: ExamResult }) {
           ))}
         </ul>
       )}
+      <p className="mt-3 text-xs text-zinc-400">{BOOK_CREDIT}</p>
     </Section>
   );
 }

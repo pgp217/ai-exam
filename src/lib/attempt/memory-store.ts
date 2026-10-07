@@ -61,7 +61,7 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
     starts_at: new Date(now - 24 * 3600_000).toISOString(),
     ends_at: new Date(now + 30 * 24 * 3600_000).toISOString(),
     time_limit_min: 40,
-    intro_text: "genai-book 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.",
+    intro_text: "생성형 AI 활용 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.",
     show_result: true,
     item_set_version: ITEM_SET_VERSION,
     status: "open",

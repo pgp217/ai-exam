@@ -14,7 +14,7 @@
 >
 > v0.2 변경: 문항·정답·채점 기준표는 DB가 아니라 코드(`src/lib/exam`)를 기준으로 관리한다(`items` 테이블 제외, `admins` 테이블 추가). 문항 원문과 채점 기준표 전체는 `items.ts`, `answer-key.data.ts` 참고.
 
-참고: genai-book 교재(Part 1~5, 부록 E), 에이치닷 역량진단 관리자 화면·결과 리포트 샘플
+참고: genai-book 교재(Part 1~5, 부록 E · GenAI Education Project, MIT License, 고지는 `NOTICE.md`), 에이치닷 역량진단 관리자 화면·결과 리포트 샘플
 
 ---
 

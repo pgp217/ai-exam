@@ -7,7 +7,7 @@ export default function Home() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-16">
       <header>
-        <p className="text-sm text-zinc-500">genai-book 기반</p>
+        <p className="text-sm text-zinc-500">ai-exam</p>
         <h1 className="text-3xl font-bold">신입사원 AI 역량 시험</h1>
         <p className="mt-2 text-zinc-600">
           객관식 {CHOICE_ITEMS.length}문항 · 자기평가 {SELF_ITEMS.length}문항 · 서술형 {ESSAY_ITEMS.length}문항

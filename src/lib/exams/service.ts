@@ -12,7 +12,7 @@ import { MAX_FILE_BYTES, readSheet } from "./xlsx";
 
 export type Result<T = undefined> = ({ ok: true } & (T extends undefined ? object : { value: T })) | { ok: false; error: string; fields?: FieldErrors };
 
-export const DEFAULT_INTRO = "genai-book 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.";
+export const DEFAULT_INTRO = "생성형 AI 활용 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.";
 
 /** 응시 링크에 쓸 앱 주소. APP_URL 이 있으면 그 값, 없으면 요청 헤더에서 만든다 */
 export async function appOrigin(): Promise<string> {

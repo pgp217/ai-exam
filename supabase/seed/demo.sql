@@ -7,7 +7,7 @@ with exam as (
     now() - interval '1 day',
     now() + interval '30 days',
     40,
-    'genai-book 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.',
+    '생성형 AI 활용 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.',
     true,
     'NEWHIRE-AI-v1',
     'open'
