@@ -5,8 +5,14 @@ import { ANSWER_KEY } from "../exam/answer-key";
 import { scheduleGrading } from "../grading/service";
 import { mergeResponses, missingEssayRows, parseResponses, scoreSubmission } from "./responses";
 import { getStore } from "./store";
-import { acceptsAnswers, attemptDeadline, durationSec, examWindow, type ExamWindow } from "./timing";
+import { acceptsAnswers, attemptDeadline, durationSec, examForCandidate, examWindow, type ExamWindow } from "./timing";
 import type { ExamRow, ExamStore, ResponseRow, Session } from "./types";
+
+/** 응시 링크로 세션을 찾는다. 재응시 마감이 있으면 그 대상자의 응시 기간에 반영한다 */
+async function findSession(store: ExamStore, token: string): Promise<Session | null> {
+  const s = await store.findSession(token);
+  return s && { ...s, exam: examForCandidate(s.exam, s.candidate.retake_until) };
+}
 
 export { storeMode } from "./store";
 
@@ -27,7 +33,7 @@ function publicExam(e: ExamRow): PublicExam {
 /** 응시 링크로 들어왔을 때의 화면 상태. 마감이 지난 응시는 저장된 응답으로 제출 처리한다. */
 export async function loadSession(token: string): Promise<SessionView> {
   const store = getStore();
-  const s = await store.findSession(token);
+  const s = await findSession(store, token);
   if (!s) return { state: "not-found" };
 
   const now = Date.now();
@@ -55,7 +61,7 @@ const err = (status: number, error: string): ActionResult => ({ ok: false, statu
 
 export async function startAttempt(token: string): Promise<ActionResult> {
   const store = getStore();
-  const s = await store.findSession(token);
+  const s = await findSession(store, token);
   if (!s) return err(404, "응시 링크가 올바르지 않습니다.");
   if (s.attempt) return { ok: true }; // 이미 시작함
   if (examWindow(s.exam, Date.now()) !== "open") return err(409, "지금은 응시할 수 없습니다.");
@@ -68,7 +74,7 @@ export async function saveResponses(token: string, body: unknown): Promise<Actio
   if (!Array.isArray(parsed)) return parsed;
 
   const store = getStore();
-  const s = await store.findSession(token);
+  const s = await findSession(store, token);
   if (!s?.attempt) return err(404, "진행 중인 응시가 없습니다.");
   if (!acceptsAnswers(s.exam, s.attempt, Date.now())) return err(409, "응시 시간이 끝났거나 이미 제출했습니다.");
   if (!(await store.saveResponses(s.attempt.id, parsed))) return err(409, "이미 제출했습니다.");
@@ -80,7 +86,7 @@ export async function submitAttempt(token: string, body: unknown): Promise<Actio
   if (!Array.isArray(parsed)) return parsed;
 
   const store = getStore();
-  const s = await store.findSession(token);
+  const s = await findSession(store, token);
   if (!s?.attempt) return err(404, "진행 중인 응시가 없습니다.");
   if (s.attempt.status !== "in_progress") return { ok: true }; // 중복 제출은 무시
 

@@ -6,7 +6,7 @@ import { getStore } from "../attempt/store";
 import type { ExamRow, NoticeTemplate } from "../attempt/types";
 import { ITEM_SET_VERSION } from "../exam/items";
 import { MAX_ROWS, parseCandidateRows, revalidate, type CandidateInput, type ParsedCandidates } from "./candidates";
-import { parseBasic, parseSite, type FieldErrors } from "./form";
+import { kstInputToIso, parseBasic, parseSite, type FieldErrors } from "./form";
 import { LMS_LIMIT, smsBytes, type Channel } from "./notice";
 import { MAX_FILE_BYTES, readSheet } from "./xlsx";
 
@@ -123,7 +123,70 @@ export async function addCandidate(examId: string, input: Partial<Record<keyof C
 }
 
 export async function removeCandidate(examId: string, candidateId: string): Promise<Result> {
+  const c = (await getStore().listCandidates(examId)).find((x) => x.id === candidateId);
+  if (c?.retakes.length) return { ok: false, error: "응시 기록이 있는 대상자는 삭제할 수 없습니다." };
   return (await getStore().deleteCandidate(examId, candidateId)) ? { ok: true } : { ok: false, error: "응시 기록이 있는 대상자는 삭제할 수 없습니다." };
+}
+
+// ── 재응시 ─────────────────────────────────────────────
+
+export const RETAKE_REASON_MAX = 500;
+
+/**
+ * 오류 등으로 다시 응시해야 하는 대상자에게 재응시를 허용한다.
+ * 이전 응시(응답·AI 채점·확정 점수·결과)는 보관하고, 대상자는 같은 링크로 처음부터 다시 응시한다.
+ * 남은 응시 기간이 제한 시간보다 짧으면 이 대상자만의 재응시 마감(until, KST 입력)을 받아야 한다.
+ */
+export async function grantRetake(
+  examId: string,
+  candidateId: string,
+  form: { reason?: string; until?: string },
+  adminId: string | null,
+  now = Date.now(),
+): Promise<Result> {
+  const store = getStore();
+  const exam = await store.getExam(examId);
+  if (!exam) return { ok: false, error: "시험을 찾을 수 없습니다." };
+  const candidate = (await store.listCandidates(examId)).find((c) => c.id === candidateId);
+  if (!candidate) return { ok: false, error: "대상자를 찾을 수 없습니다." };
+  if (!candidate.attemptStatus) return { ok: false, error: "아직 응시하지 않은 대상자입니다. 응시 링크로 그대로 응시하면 됩니다." };
+  if (exam.status !== "open") return { ok: false, error: "시험이 열려 있을 때만 재응시를 허용할 수 있습니다. 시험을 연 뒤 다시 시도해 주세요." };
+
+  const fields: FieldErrors = {};
+  const reason = normalizeNewlines(form.reason ?? "").trim();
+  if (!reason) fields.reason = "재응시 사유를 입력해 주세요. 나중에 오류 원인을 확인할 때 씁니다.";
+  else if (reason.length > RETAKE_REASON_MAX) fields.reason = `사유는 ${RETAKE_REASON_MAX}자 이내로 입력해 주세요.`;
+
+  let until: string | null = null;
+  if (form.until?.trim()) {
+    until = kstInputToIso(form.until.trim());
+    if (!until) fields.until = "재응시 마감 일시를 확인해 주세요.";
+    else if (Date.parse(until) <= now) fields.until = "재응시 마감은 지금보다 뒤여야 합니다.";
+  }
+  if (!fields.until) {
+    const end = Math.max(Date.parse(exam.ends_at), until ? Date.parse(until) : 0);
+    if (end - now < exam.time_limit_min * 60_000) {
+      fields.until = Date.parse(exam.ends_at) <= now
+        ? "응시 기간이 끝났습니다. 이 대상자의 재응시 마감 일시를 정해 주세요."
+        : `남은 응시 기간이 제한 시간(${exam.time_limit_min}분)보다 짧습니다. 재응시 마감 일시를 더 뒤로 정해 주세요.`;
+    }
+  }
+  if (Object.keys(fields).length) return { ok: false, error: "입력값을 확인해 주세요.", fields };
+
+  // 시험 기간 안에 끝나는 마감은 저장할 필요가 없다
+  const retakeUntil = until && Date.parse(until) > Date.parse(exam.ends_at) ? until : null;
+  const ok = await store.resetAttempt(examId, candidateId, { reason, adminId, retakeUntil });
+  return ok ? { ok: true } : { ok: false, error: "응시 기록을 찾지 못했습니다. 새로고침한 뒤 다시 시도해 주세요." };
+}
+
+/** 재응시 점수가 확정된 뒤, 보관한 이전 응시의 AI 채점·확정 점수를 지운다 (응답 원문과 사유는 남긴다) */
+export async function clearRetakeScores(examId: string, candidateId: string, archiveId: string): Promise<Result> {
+  const store = getStore();
+  const candidate = (await store.listCandidates(examId)).find((c) => c.id === candidateId);
+  if (!candidate) return { ok: false, error: "대상자를 찾을 수 없습니다." };
+  if (candidate.attemptStatus !== "complete") return { ok: false, error: "재응시 점수가 확정된 뒤에 이전 채점 기록을 지울 수 있습니다." };
+  const ok = await store.clearArchiveScores(examId, candidateId, archiveId);
+  return ok ? { ok: true } : { ok: false, error: "이미 지웠거나 기록을 찾을 수 없습니다." };
 }
 
 // ── 안내문 ─────────────────────────────────────────────

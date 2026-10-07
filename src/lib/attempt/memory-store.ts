@@ -7,7 +7,7 @@ import { simulateCohort } from "../exam/simulate";
 import { mergeResponses, scoreSubmission } from "./responses";
 import type {
   AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
-  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate,
+  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate, RetakeRecord,
 } from "./types";
 
 interface Candidate extends CandidateInfo {
@@ -18,6 +18,15 @@ interface Candidate extends CandidateInfo {
   phone?: string | null;
   joined_at?: string | null;
   invited_at?: string | null;
+  retake_until?: string | null;
+}
+
+/** 재응시로 보관한 이전 응시 (Supabase 의 attempt_archives 와 같은 내용) */
+interface Archive extends RetakeRecord {
+  candidate_id: string;
+  attempt_id: string;
+  archived_by: string | null;
+  snapshot: { attempt: AttemptRow; result: unknown; responses: (StoredResponse & { ai_gradings?: AiGradingRow[]; final_grading?: FinalGradingRow | null })[] };
 }
 
 type StoredResponse = ResponseRow & { id: string };
@@ -33,6 +42,7 @@ export interface MemoryDb {
   finals: FinalGradingRow[];
   admins: Map<string, { name: string }>; // user_id → 관리자
   notices: Map<string, NoticeTemplate[]>; // exam_id → 안내문
+  archives: Archive[];
 }
 
 export const MEMORY_ADMIN_ID = "00000000-0000-4000-8000-00000000ad01";
@@ -71,6 +81,7 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
     finals: [],
     admins: new Map([[MEMORY_ADMIN_ID, { name: "데모 관리자" }]]),
     notices: new Map(),
+    archives: [],
   };
   if (opts.simulated) addSimulated(db, exam, opts.simulated, now);
   return db;
@@ -117,7 +128,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       const exam = db.exams.find((e) => e.id === c.exam_id)!;
       const attempt = db.attempts.find((a) => a.candidate_id === c.id) ?? null;
       return {
-        candidate: { id: c.id, name: c.name },
+        candidate: { id: c.id, name: c.name, retake_until: c.retake_until ?? null },
         exam: { ...exam },
         attempt: attempt && { ...attempt },
         responses: attempt ? (db.responses.get(attempt.id) ?? []).map((r) => ({ item_id: r.item_id, answer: clone(r.answer), response_ms: r.response_ms, pasted: r.pasted })) : [],
@@ -321,6 +332,11 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
           id: c.id, employee_no: c.employee_no, name: c.name, email: c.email ?? null, phone: c.phone ?? null,
           department: c.department, cohort: c.cohort, joined_at: c.joined_at ?? null, access_token: c.access_token,
           invited_at: c.invited_at ?? null, attemptStatus: db.attempts.find((a) => a.candidate_id === c.id)?.status ?? null,
+          retake_until: c.retake_until ?? null,
+          retakes: db.archives
+            .filter((x) => x.candidate_id === c.id)
+            .sort((x, y) => y.archived_at.localeCompare(x.archived_at))
+            .map((x) => ({ id: x.id, status: x.status, grade: x.grade, reason: x.reason, archived_at: x.archived_at, scores_cleared_at: x.scores_cleared_at })),
         }));
     },
 
@@ -344,6 +360,50 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       const i = db.candidates.findIndex((c) => c.id === candidateId && c.exam_id === examId);
       if (i < 0 || db.attempts.some((a) => a.candidate_id === candidateId)) return false;
       db.candidates.splice(i, 1);
+      return true;
+    },
+
+    async resetAttempt(examId, candidateId, input) {
+      const c = db.candidates.find((x) => x.id === candidateId && x.exam_id === examId);
+      const a = c && db.attempts.find((x) => x.candidate_id === c.id);
+      if (!c || !a) return false;
+      const responses = db.responses.get(a.id) ?? [];
+      const result = db.results.get(a.id);
+      db.archives.push({
+        id: crypto.randomUUID(), candidate_id: c.id, attempt_id: a.id, status: a.status, grade: result?.grade ?? null,
+        reason: input.reason.trim(), archived_by: input.adminId, archived_at: new Date(Date.now() + db.archives.length).toISOString(), scores_cleared_at: null,
+        snapshot: clone({
+          attempt: a,
+          result: result ?? null,
+          responses: responses.map((r) => ({
+            ...r,
+            ai_gradings: db.aiGradings.filter((g) => g.response_id === r.id),
+            final_grading: db.finals.find((f) => f.response_id === r.id) ?? null,
+          })),
+        }),
+      });
+      const ids = new Set(responses.map((r) => r.id));
+      db.attempts = db.attempts.filter((x) => x.id !== a.id);
+      db.responses.delete(a.id);
+      db.results.delete(a.id);
+      db.reliability.delete(a.id);
+      db.aiGradings = db.aiGradings.filter((g) => !ids.has(g.response_id));
+      db.finals = db.finals.filter((f) => !ids.has(f.response_id));
+      c.retake_until = input.retakeUntil;
+      return true;
+    },
+
+    async clearArchiveScores(examId, candidateId, archiveId) {
+      const c = db.candidates.find((x) => x.id === candidateId && x.exam_id === examId);
+      const x = c && db.archives.find((r) => r.id === archiveId && r.candidate_id === c.id);
+      if (!x || x.scores_cleared_at) return false;
+      x.snapshot.result = null;
+      for (const r of x.snapshot.responses) {
+        delete r.ai_gradings;
+        delete r.final_grading;
+      }
+      x.grade = null;
+      x.scores_cleared_at = new Date().toISOString();
       return true;
     },
 

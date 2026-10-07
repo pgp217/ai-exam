@@ -131,6 +131,7 @@ describe("notices", () => {
 
 // ── 서비스 규칙 (메모리 저장소) ────────────────────────────
 vi.mock("next/headers", () => ({ headers: async () => new Headers({ host: "localhost:3000" }) }));
+vi.mock("next/server", () => ({ after: () => {} })); // 제출 뒤 채점 예약은 이 테스트에서 실행하지 않는다
 
 describe("exam service", () => {
   beforeEach(() => {
@@ -175,5 +176,110 @@ describe("exam service", () => {
     expect((await svc.updateSite("demo-exam", { time_limit_min: "40", intro_text: "바뀐 안내", show_result: "on" })).ok).toBe(true);
     const other = (await store.listCandidates("demo-exam"))[1];
     expect(await svc.removeCandidate("demo-exam", other.id)).toEqual({ ok: true });
+  });
+});
+
+describe("retake", () => {
+  const H = 3600_000;
+  const kst = (t: number) => isoToKstInput(new Date(t).toISOString());
+  let store: ReturnType<typeof createMemoryStore>;
+
+  beforeEach(() => {
+    vi.stubEnv("EXAM_STORE", "memory");
+    store = createMemoryStore(demoDb(Date.now(), { simulated: 5 }));
+    (globalThis as { __examStore?: unknown }).__examStore = store;
+  });
+
+  it("extends the exam window only for a candidate with a later retake deadline", async () => {
+    const { examForCandidate } = await import("../../attempt/timing");
+    const exam = store.db.exams[0];
+    expect(examForCandidate(exam, null)).toBe(exam);
+    expect(examForCandidate(exam, "2000-01-01T00:00:00Z")).toBe(exam); // 시험 기간보다 이르면 무시
+    const later = new Date(Date.parse(exam.ends_at) + 24 * H).toISOString();
+    expect(examForCandidate(exam, later).ends_at).toBe(later);
+  });
+
+  it("requires a reason and an existing attempt", async () => {
+    const svc = await import("../service");
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "  " }, null)).toMatchObject({ ok: false, fields: { reason: expect.any(String) } });
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "가".repeat(501) }, null)).toMatchObject({ ok: false, fields: { reason: expect.any(String) } });
+    expect(await svc.grantRetake("demo-exam", "demo-c2", { reason: "오류" }, null)).toMatchObject({ ok: false }); // 아직 응시 안 함
+    expect(await svc.grantRetake("demo-exam", "nobody", { reason: "오류" }, null)).toMatchObject({ ok: false });
+    store.db.exams[0].status = "closed";
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류" }, null)).toMatchObject({ ok: false }); // 시험이 닫힘
+  });
+
+  it("archives the previous attempt with its gradings and lets the candidate start over", async () => {
+    const svc = await import("../service");
+    const before = store.db.attempts.find((a) => a.candidate_id === "sim-c1")!;
+    const grade = store.db.results.get(before.id)!.grade;
+    expect((await store.getCohort("demo-exam")).length).toBe(5);
+
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: " 화면 멈춤\r\n서술형 미저장 " }, "admin-1")).toEqual({ ok: true });
+
+    const archive = store.db.archives[0];
+    expect(archive).toMatchObject({ candidate_id: "sim-c1", attempt_id: before.id, status: "complete", grade, reason: "화면 멈춤\n서술형 미저장", archived_by: "admin-1", scores_cleared_at: null });
+    expect(archive.snapshot.responses.filter((r) => r.final_grading)).toHaveLength(3); // 확정 점수까지 보관
+    expect(archive.snapshot.result).toMatchObject({ status: "complete", grade });
+    expect(store.db.attempts.some((a) => a.candidate_id === "sim-c1")).toBe(false);
+    expect(store.db.results.has(before.id)).toBe(false);
+    expect((await store.getCohort("demo-exam")).length).toBe(4); // 이전 결과는 동기 비교에서 빠진다
+
+    const c = (await store.listCandidates("demo-exam")).find((x) => x.id === "sim-c1")!;
+    expect(c).toMatchObject({ attemptStatus: null, retake_until: null, retakes: [{ status: "complete", grade, reason: "화면 멈춤\n서술형 미저장" }] });
+    expect(await svc.removeCandidate("demo-exam", "sim-c1")).toMatchObject({ ok: false }); // 기록이 남아 있으면 삭제 불가
+
+    // 같은 링크로 처음부터 다시 응시
+    const attempt = await import("../../attempt/service");
+    expect(await attempt.loadSession("sim-1")).toMatchObject({ state: "intro" });
+    expect(await attempt.startAttempt("sim-1")).toEqual({ ok: true });
+    expect(await attempt.loadSession("sim-1")).toMatchObject({ state: "in-progress", responses: [] });
+  });
+
+  it("clears archived scores only after the retake is complete, keeping answers and the reason", async () => {
+    const svc = await import("../service");
+    await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류" }, null);
+    const archiveId = store.db.archives[0].id;
+    expect(await svc.clearRetakeScores("demo-exam", "sim-c1", archiveId)).toMatchObject({ ok: false }); // 재응시 전
+
+    await store.startAttempt("sim-c1");
+    const retake = store.db.attempts.find((a) => a.candidate_id === "sim-c1")!;
+    retake.status = "grading";
+    expect(await svc.clearRetakeScores("demo-exam", "sim-c1", archiveId)).toMatchObject({ ok: false }); // 아직 확정 전
+    retake.status = "complete";
+    expect(await svc.clearRetakeScores("demo-exam", "sim-c2", archiveId)).toMatchObject({ ok: false }); // 다른 대상자
+    expect(await svc.clearRetakeScores("demo-exam", "sim-c1", archiveId)).toEqual({ ok: true });
+
+    const archive = store.db.archives[0];
+    expect(archive.grade).toBeNull();
+    expect(archive.scores_cleared_at).not.toBeNull();
+    expect(archive.snapshot.result).toBeNull();
+    expect(archive.snapshot.responses.length).toBeGreaterThan(0); // 응답 원문은 남김
+    expect(archive.snapshot.responses.some((r) => "final_grading" in r || "ai_gradings" in r)).toBe(false);
+    expect(archive.reason).toBe("오류");
+    expect(await svc.clearRetakeScores("demo-exam", "sim-c1", archiveId)).toMatchObject({ ok: false }); // 이미 지움
+  });
+
+  it("asks for a per-candidate deadline when too little exam time is left", async () => {
+    const svc = await import("../service");
+    const now = Date.now();
+    const exam = store.db.exams[0];
+
+    exam.ends_at = new Date(now + 10 * 60_000).toISOString(); // 10분 남음 < 제한 시간 40분
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류" }, null, now)).toMatchObject({ ok: false, fields: { until: expect.stringContaining("40분") } });
+
+    exam.ends_at = new Date(now - H).toISOString(); // 기간 끝남
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류" }, null, now)).toMatchObject({ ok: false, fields: { until: expect.stringContaining("끝났습니다") } });
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류", until: kst(now - 2 * H) }, null, now)).toMatchObject({ ok: false, fields: { until: expect.any(String) } });
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류", until: "잘못된 값" }, null, now)).toMatchObject({ ok: false, fields: { until: expect.any(String) } });
+
+    const until = kst(now + 48 * H);
+    expect(await svc.grantRetake("demo-exam", "sim-c1", { reason: "오류", until }, null, now)).toEqual({ ok: true });
+    expect(isoToKstInput(store.db.candidates.find((c) => c.id === "sim-c1")!.retake_until!)).toBe(until);
+
+    // 이 대상자만 응시할 수 있다
+    const attempt = await import("../../attempt/service");
+    expect(await attempt.loadSession("sim-1")).toMatchObject({ state: "intro" });
+    expect(await attempt.loadSession("demo2")).toMatchObject({ state: "unavailable", reason: "ended" });
   });
 });

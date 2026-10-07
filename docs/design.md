@@ -1,5 +1,7 @@
-# 신입사원 AI 역량 시험 — 설계안 v0.7
+# 신입사원 AI 역량 시험 — 설계안 v0.8
 
+> v0.8 변경(재응시): 관리자가 사유를 적고 재응시를 허용한다. `attempts` 의 1인 1회 제약은 그대로 두고, 이전 응시(응답·AI 채점·확정 점수·결과)를 `attempt_archives` 에 보관한 뒤 지워 같은 링크로 다시 응시하게 한다. 시험이 열려 있을 때만 허용하며, 남은 기간이 제한 시간보다 짧으면 대상자별 재응시 마감(`candidates.retake_until`)을 받는다. 재응시 점수 확정 뒤에는 보관본의 채점 기록만 지울 수 있다(응답 원문·사유는 유지). 정합성 점검은 재응시 대상자를 제외한다(`0004_retake.sql`).
+>
 > v0.7 변경(6단계): 정합성 점검 스크립트(`scripts/crosscheck.py`)로 저장된 모든 결과를 독립 재계산과 대조. 보안 헤더와 CSV 수식 주입 방지 추가. 운영 가이드는 README.
 >
 > v0.6 변경(5단계): 시험은 초안으로 만들고 대상자·안내문이 준비되면 연다. 대상자 엑셀은 미리보기 후 확정(사번 기준 추가·갱신, 응시 링크 유지). 응시 시작 후에는 제한 시간 변경·대상자 삭제를 막는다. 안내문은 CSV 내보내기까지(실제 발송 없음).
@@ -111,6 +113,7 @@
 - 결과 목록: 이름, 소속, 사번, 기수, 응시 상태, 채점 상태, 응답 신뢰도, 유형, 등급 + 필터
 - 서술형 채점 리뷰: AI 1차 점수·근거(응답 원문 인용)를 보고 기준별 점수를 조정·확정, AI와 다르면 사유 필수
 - 개인 리포트 보기
+- 재응시 허용: 대상자 화면에서 사유(필수)와 필요하면 재응시 마감을 입력. 이전 응시 기록(보관 시각·당시 상태·등급·사유) 확인, 재응시 확정 뒤 이전 채점 기록 삭제
 
 **응시자** (로그인 없이 개인별 응시 링크)
 - 안내·동의 → 응시(타이머, 문항 이동, 임시 저장) → 제출 완료 → (공개 시) 리포트
@@ -145,6 +148,9 @@ final_gradings   (response_id PK, grader_id, criterion_scores jsonb, score,
 results          (attempt_id PK, knowledge_score, practice_score?, total?, grade?, ai_type?,
                   detail jsonb, status grading|complete, computed_at)  -- ? 는 서술형 확정 전 null
 notice_templates (id, exam_id, channel, subject, body)
+attempt_archives (id, candidate_id, attempt_id, status, grade, reason, archived_by,
+                  archived_at, scores_cleared_at, snapshot jsonb)  -- 재응시로 보관한 이전 응시
+-- candidates.retake_until: 대상자별 재응시 마감 (시험 기간보다 늦을 때만 의미 있음)
 ```
 
 관리자는 Supabase Auth로 로그인, 응시자는 `access_token` 링크로 서버(service_role)를 거쳐서만 접근. 전체 SQL은 `supabase/migrations/0001_init.sql`.

@@ -5,6 +5,15 @@ import type { AttemptRow, ExamRow } from "./types";
 /** 제한 시간이 끝난 뒤에도 마지막 저장·제출 요청을 받아 주는 여유 (네트워크 지연 대비) */
 export const GRACE_MS = 60_000;
 
+/**
+ * 대상자에게 재응시 마감(retake_until)이 있으면 그 대상자에게만 응시 기간 종료를 늦춘다.
+ * 시험 기간보다 이르면 무시한다. 이후 판정은 모두 이 값을 쓴다.
+ */
+export function examForCandidate(exam: ExamRow, retakeUntil: string | null): ExamRow {
+  if (!retakeUntil || Date.parse(retakeUntil) <= Date.parse(exam.ends_at)) return exam;
+  return { ...exam, ends_at: retakeUntil };
+}
+
 export type ExamWindow = "open" | "not-yet" | "ended" | "closed";
 
 export function examWindow(exam: ExamRow, now: number): ExamWindow {
