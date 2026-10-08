@@ -1,4 +1,7 @@
-// 요인 체계 (상위 3 → 중위 8 → 하위 16). 교재: genai-book Ch 1~11.
+// 요인 체계 (상위 3 → 중위 8 → 하위 16). 교재: genai-book Ch 1~11 (GenAI Education Project, MIT License · NOTICE.md).
+
+/** 리포트에 표시하는 교재 출처 */
+export const BOOK_CREDIT = "교재: GenAI Education Project · MIT License";
 
 export const CHAPTERS = {
   ch01: { title: "Chapter 1 생성형 AI란" },

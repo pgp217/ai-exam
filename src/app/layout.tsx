@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "신입사원 AI 역량 시험",
-  description: "genai-book 기반 신입사원 AI 역량 시험과 결과 리포트",
+  description: "ai-exam · 신입사원 AI 역량 시험과 결과 리포트",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

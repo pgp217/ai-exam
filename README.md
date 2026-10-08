@@ -3,7 +3,7 @@
 신입사원 대상 AI 역량 시험 앱입니다. 응시 → 객관식 자동 채점 + 서술형 AI 1차 채점 → 담당자 확정 → 개인 리포트·관리자 결과 목록까지 다룹니다.
 
 - 설계안: [docs/design.md](docs/design.md)
-- 교재: genai-book Ch 1~11
+- 교재: genai-book Ch 1~11 (GenAI Education Project, https://github.com/Zakedu/genai-book, MIT License). 교재 내용을 바탕으로 문항을 새로 썼고, 장 제목과 요인 체계를 참고했습니다. 저작권 고지: [NOTICE.md](NOTICE.md)
 - 기술: Next.js 16 + TypeScript + Tailwind, Supabase(Postgres), Claude API, Vercel 배포
 
 ## 진행 현황
