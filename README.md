@@ -48,6 +48,9 @@
 | `supabase/migrations/0001_init.sql` | 테이블, 권한, RLS 정책 |
 | `supabase/migrations/0002_attempt_flow.sql` | 임시 저장·제출 함수(`save_responses`, `submit_attempt`), `results` 를 객관식만 채점된 상태로도 저장 |
 | `supabase/migrations/0003_report_feedback.sql` | `results.feedback` (성장 피드백 저장) |
+| `supabase/migrations/0005_survey.sql` | 응시 후 설문(`attempt_surveys`), 시험별 설정 `exams.collect_survey`, 재응시 보관본에 설문 포함 |
+| `src/lib/survey/` · `src/app/admin/(console)/surveys` | 설문 문항·검증·집계, 관리자 설문 결과(문항별 평균·분포, 오류 신고, 자유 의견) |
+| `docs/pilot.md` | 소규모 파일럿 운영 계획 (준비 → 운영 → 분석 → 개선) |
 | `supabase/migrations/0004_retake.sql` | 재응시: 이전 응시 보관(`attempt_archives`), 대상자별 재응시 마감(`candidates.retake_until`), `reset_attempt` · `clear_archive_scores` 함수 |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
 
@@ -92,7 +95,7 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 
 ## Supabase 설정
 
-1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql`, `0003_report_feedback.sql`, `0004_retake.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
+1. SQL Editor 에서 `supabase/migrations/0001_init.sql`, `0002_attempt_flow.sql`, `0003_report_feedback.sql`, `0004_retake.sql`, `0005_survey.sql` 을 차례로 실행 (데모가 필요하면 `supabase/seed/demo.sql` 도)
 2. Authentication 에서 관리자 계정을 만든 뒤(Auto Confirm User 체크) `admins` 테이블에 등록
    ```sql
    insert into public.admins (user_id, name) values ('<auth.users 의 id>', '관리자 이름');
@@ -117,6 +120,13 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 5. **리포트** (`/admin/results`): 세 문항이 확정되면 리포트가 생기고 AI 성장 피드백 초안이 만들어진다. 확인 후 **승인하고 공개**하면 결과 공개 시험의 응시자가 자기 응시 링크에서 본다
 6. **재응시** (필요할 때): 아래 "재응시" 참고
 7. **마감**: 응시 기간이 끝나면 자동으로 응시를 받지 않는다. 시험 화면의 **마감하기**로 일찍 닫을 수도 있다
+
+### 응시 후 설문
+시험의 **② 응시 사이트**에서 **응시 후 설문 받기**를 켜면, 답안을 제출한 응시자에게 선택 설문이 나온다.
+- 5점 척도 5문항(난이도, 제한 시간, 문항 이해도, 업무 관련성, 화면 편의), 오류·불편 여부와 내용, 자유 의견
+- 응시 1건당 1번만 받고 점수에는 반영하지 않는다. 결과 리포트가 열린 뒤에도 아직 안 냈으면 리포트 아래에 나온다.
+- **설문** 메뉴에서 시험별 문항 평균·분포, 오류·불편 신고, 자유 의견을 보고, 개인 결과 리포트 화면에서도 그 사람의 응답을 본다.
+- 재응시를 허용하면 설문도 이전 응시와 함께 보관된다.
 
 ### 재응시
 응시 중 오류 등으로 다시 봐야 하는 대상자는 시험의 **대상자** 화면에서 그 사람 줄의 **재응시**를 누른다.

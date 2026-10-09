@@ -1,4 +1,5 @@
 // 응시 흐름에서 쓰는 DB 행 모양과 저장소 인터페이스.
+import type { Survey } from "../survey/survey";
 
 export interface ExamRow {
   id: string;
@@ -8,6 +9,7 @@ export interface ExamRow {
   time_limit_min: number;
   intro_text: string;
   show_result: boolean;
+  collect_survey: boolean; // 제출 뒤 응시 후 설문을 받는다
   item_set_version: string;
   status: "draft" | "open" | "closed";
 }
@@ -38,6 +40,7 @@ export interface Session {
   exam: ExamRow;
   attempt: AttemptRow | null;
   responses: ResponseRow[];
+  surveyDone: boolean; // 이 응시의 설문을 이미 냈는지
 }
 
 export interface SubmitInput {
@@ -57,6 +60,16 @@ export interface ExamStore {
   saveResponses(attemptId: string, responses: ResponseRow[]): Promise<boolean>;
   /** 이미 제출됐으면 아무것도 바꾸지 않고 false */
   submitAttempt(input: SubmitInput): Promise<boolean>;
+  /** 응시 1건당 1번. 이미 냈으면 false */
+  saveSurvey(attemptId: string, survey: Survey): Promise<boolean>;
+}
+
+/** 관리자 화면용 설문 응답 */
+export interface SurveyRow extends Survey {
+  attemptId: string;
+  created_at: string;
+  candidate: CandidateInfo;
+  exam: { id: string; title: string };
 }
 
 // ── 서술형 채점 (3단계) ─────────────────────────────────
@@ -206,6 +219,8 @@ export interface ReportStore {
   listResults(): Promise<ResultRow[]>;
   listExams(): Promise<{ id: string; title: string }[]>;
   saveFeedback(attemptId: string, feedback: Feedback): Promise<void>;
+  /** examId 가 있으면 그 시험만, 최근 순 */
+  listSurveys(examId?: string): Promise<SurveyRow[]>;
 }
 
 // ── 시험·대상자·안내문 관리 (5단계) ─────────────────────
@@ -266,12 +281,12 @@ export interface NoticeTemplate {
   updated_at?: string;
 }
 
-export type ExamPatch = Partial<Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "status">>;
+export type ExamPatch = Partial<Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "collect_survey" | "status">>;
 
 export interface ExamAdminStore {
   listExamSummaries(): Promise<ExamSummary[]>;
   getExam(examId: string): Promise<ExamRow | null>;
-  createExam(input: Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "item_set_version">, createdBy: string | null): Promise<string>;
+  createExam(input: Pick<ExamRow, "title" | "starts_at" | "ends_at" | "time_limit_min" | "intro_text" | "show_result" | "collect_survey" | "item_set_version">, createdBy: string | null): Promise<string>;
   updateExam(examId: string, patch: ExamPatch): Promise<void>;
   listCandidates(examId: string): Promise<AdminCandidate[]>;
   /** 사번 기준으로 새로 넣거나 정보를 바꾼다. 응시 링크(access_token)는 바뀌지 않는다 */

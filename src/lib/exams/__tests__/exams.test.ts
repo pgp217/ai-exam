@@ -24,7 +24,8 @@ describe("exam form", () => {
   });
 
   it("validates site settings", () => {
-    expect(parseSite({ time_limit_min: "40", intro_text: " 안내 ", show_result: "on" })).toEqual({ ok: true, value: { time_limit_min: 40, intro_text: "안내", show_result: true } });
+    expect(parseSite({ time_limit_min: "40", intro_text: " 안내 ", show_result: "on" })).toEqual({ ok: true, value: { time_limit_min: 40, intro_text: "안내", show_result: true, collect_survey: false } });
+    expect(parseSite({ time_limit_min: "40", intro_text: "", collect_survey: "on" })).toMatchObject({ ok: true, value: { show_result: false, collect_survey: true } });
     expect(parseSite({ time_limit_min: "40", intro_text: "", show_result: null })).toMatchObject({ ok: true, value: { show_result: false } });
     expect(parseSite({ time_limit_min: "40", intro_text: "a\r\nb" })).toMatchObject({ ok: true, value: { intro_text: "a\nb" } });
     expect(parseSite({ time_limit_min: "4", intro_text: "" }).ok).toBe(false);

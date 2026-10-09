@@ -10,7 +10,7 @@ const T0 = Date.parse("2026-10-06T00:00:00Z");
 
 const exam = (over: Partial<ExamRow> = {}): ExamRow => ({
   id: "e", title: "t", starts_at: "2026-10-01T00:00:00Z", ends_at: "2026-10-10T00:00:00Z",
-  time_limit_min: 40, intro_text: "", show_result: false, item_set_version: "v1", status: "open", ...over,
+  time_limit_min: 40, intro_text: "", show_result: false, collect_survey: false, item_set_version: "v1", status: "open", ...over,
 });
 const attempt = (over: Partial<AttemptRow> = {}): AttemptRow => ({
   id: "a", candidate_id: "c", started_at: new Date(T0).toISOString(), submitted_at: null, duration_sec: null, status: "in_progress", ...over,

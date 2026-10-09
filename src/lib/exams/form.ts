@@ -42,9 +42,12 @@ export interface SiteInput {
   time_limit_min: number;
   intro_text: string;
   show_result: boolean;
+  collect_survey: boolean;
 }
 
-export function parseSite(f: { time_limit_min?: string; intro_text?: string; show_result?: string | null }): Parsed<SiteInput> {
+const checked = (v: string | null | undefined) => v === "on" || v === "true";
+
+export function parseSite(f: { time_limit_min?: string; intro_text?: string; show_result?: string | null; collect_survey?: string | null }): Parsed<SiteInput> {
   const errors: FieldErrors = {};
   const limit = Number(f.time_limit_min);
   if (!Number.isInteger(limit) || limit < LIMITS.minLimit || limit > LIMITS.maxLimit) {
@@ -54,7 +57,7 @@ export function parseSite(f: { time_limit_min?: string; intro_text?: string; sho
   if (intro_text.length > LIMITS.introMax) errors.intro_text = `안내 문구는 ${LIMITS.introMax}자 이내로 입력해 주세요.`;
   return Object.keys(errors).length
     ? { ok: false, errors }
-    : { ok: true, value: { time_limit_min: limit, intro_text, show_result: f.show_result === "on" || f.show_result === "true" } };
+    : { ok: true, value: { time_limit_min: limit, intro_text, show_result: checked(f.show_result), collect_survey: checked(f.collect_survey) } };
 }
 
 const DAY_MS = 24 * 3600_000;

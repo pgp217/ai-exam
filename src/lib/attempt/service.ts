@@ -4,6 +4,7 @@ import "server-only";
 import { ANSWER_KEY } from "../exam/answer-key";
 import { scheduleGrading } from "../grading/service";
 import { mergeResponses, missingEssayRows, parseResponses, scoreSubmission } from "./responses";
+import { InvalidSurveyError, parseSurvey, type Survey } from "../survey/survey";
 import { getStore } from "./store";
 import { acceptsAnswers, attemptDeadline, durationSec, examForCandidate, examWindow, type ExamWindow } from "./timing";
 import type { ExamRow, ExamStore, ResponseRow, Session } from "./types";
@@ -24,7 +25,12 @@ export type SessionView =
   | { state: "unavailable"; reason: Exclude<ExamWindow, "open">; exam: PublicExam; candidateName: string }
   | { state: "intro"; exam: PublicExam; candidateName: string }
   | { state: "in-progress"; exam: PublicExam; candidateName: string; deadline: number; now: number; responses: ResponseRow[] }
-  | { state: "submitted"; exam: PublicExam; candidateName: string; submittedAt: string | null; attemptId: string };
+  | { state: "submitted"; exam: PublicExam; candidateName: string; submittedAt: string | null; attemptId: string; survey: SurveyState };
+
+/** 응시 후 설문: 받지 않는 시험(off), 아직 안 냄(ask), 냄(done) */
+export type SurveyState = "off" | "ask" | "done";
+
+const surveyState = (s: Session): SurveyState => (!s.exam.collect_survey ? "off" : s.surveyDone ? "done" : "ask");
 
 function publicExam(e: ExamRow): PublicExam {
   return { title: e.title, intro_text: e.intro_text, time_limit_min: e.time_limit_min, starts_at: e.starts_at, ends_at: e.ends_at, show_result: e.show_result };
@@ -43,10 +49,10 @@ export async function loadSession(token: string): Promise<SessionView> {
   if (a?.status === "in_progress" && !acceptsAnswers(s.exam, a, now)) {
     // 여기서 다시 조회하지 않는다. 렌더링 중 같은 GET fetch 는 Next.js 가 메모이즈해 제출 전 상태가 돌아온다.
     await finalize(store, s, [], now);
-    return { state: "submitted", ...base, submittedAt: new Date(now).toISOString(), attemptId: a.id };
+    return { state: "submitted", ...base, submittedAt: new Date(now).toISOString(), attemptId: a.id, survey: surveyState(s) };
   }
 
-  if (a && a.status !== "in_progress") return { state: "submitted", ...base, submittedAt: a.submitted_at, attemptId: a.id };
+  if (a && a.status !== "in_progress") return { state: "submitted", ...base, submittedAt: a.submitted_at, attemptId: a.id, survey: surveyState(s) };
   if (a) return { state: "in-progress", ...base, deadline: attemptDeadline(s.exam, a), now, responses: s.responses };
 
   const w = examWindow(s.exam, now);
@@ -93,6 +99,23 @@ export async function submitAttempt(token: string, body: unknown): Promise<Actio
   const now = Date.now();
   // 마감 + 여유 시간이 지났으면 이번 요청의 응답은 받지 않고 저장된 응답으로 제출한다
   await finalize(store, s, acceptsAnswers(s.exam, s.attempt, now) ? parsed : [], now);
+  return { ok: true };
+}
+
+/** 응시 후 설문 저장. 제출한 응시에만, 1번만 받는다 */
+export async function submitSurvey(token: string, body: unknown): Promise<ActionResult> {
+  let survey: Survey;
+  try {
+    survey = parseSurvey(body);
+  } catch (e) {
+    return err(400, e instanceof InvalidSurveyError ? e.message : "설문 형식이 올바르지 않습니다.");
+  }
+  const store = getStore();
+  const s = await findSession(store, token);
+  if (!s) return err(404, "응시 링크가 올바르지 않습니다.");
+  if (!s.exam.collect_survey) return err(404, "설문을 받지 않는 시험입니다.");
+  if (!s.attempt || s.attempt.status === "in_progress") return err(409, "답안을 제출한 뒤에 설문에 답할 수 있습니다.");
+  if (!(await store.saveSurvey(s.attempt.id, survey))) return err(409, "이미 설문에 답했습니다.");
   return { ok: true };
 }
 

@@ -1,4 +1,4 @@
-// 실제 PostgREST(로컬 Postgres + 마이그레이션 0001~0004 + 가상 응시자 시드)에 대해 저장소 쿼리를 확인한다.
+// 실제 PostgREST(로컬 Postgres + 마이그레이션 0001~0005 + 가상 응시자 시드)에 대해 저장소 쿼리를 확인한다.
 // 기본 npm test 에서는 건너뛴다. 실행: STORE_IT_URL=http://127.0.0.1:3900 STORE_IT_KEY=<service JWT> STORE_IT_EXAM=<exam_id> npx vitest run supabase-store
 import { describe, expect, it } from "vitest";
 import { createSupabaseStore } from "../supabase-store";
@@ -47,7 +47,7 @@ describe.skipIf(!url || !key)("supabase store exam admin (integration)", () => {
   it("creates an exam, upserts candidates, saves notices, and deletes safely", async () => {
     const store = createSupabaseStore(url!, key!);
     const examId = await store.createExam(
-      { title: "[통합 테스트] 시험", starts_at: "2027-01-01T00:00:00Z", ends_at: "2027-01-08T00:00:00Z", time_limit_min: 40, intro_text: "안내", show_result: true, item_set_version: "NEWHIRE-AI-v1" },
+      { title: "[통합 테스트] 시험", starts_at: "2027-01-01T00:00:00Z", ends_at: "2027-01-08T00:00:00Z", time_limit_min: 40, intro_text: "안내", show_result: true, collect_survey: false, item_set_version: "NEWHIRE-AI-v1" },
       null,
     );
     try {
@@ -69,6 +69,17 @@ describe.skipIf(!url || !key)("supabase store exam admin (integration)", () => {
 
       await store.startAttempt(t1.id);
       expect((await store.listExamSummaries()).find((e) => e.id === examId)).toMatchObject({ started: 1, submitted: 0 });
+
+      // 응시 후 설문: 1건만 저장, 세션·목록에서 보임
+      await store.updateExam(examId, { collect_survey: true });
+      const s1 = (await store.findSession(t1.access_token))!;
+      expect(s1).toMatchObject({ exam: { collect_survey: true }, surveyDone: false });
+      const survey = { answers: { difficulty: 3, time: 2, clarity: 4, relevance: 5, usability: 4 }, had_issue: true, issue: "멈춤", comment: null };
+      expect(await store.saveSurvey(s1.attempt!.id, survey)).toBe(true);
+      expect(await store.saveSurvey(s1.attempt!.id, { ...survey, issue: "다시" })).toBe(false);
+      expect((await store.findSession(t1.access_token))!.surveyDone).toBe(true);
+      expect(await store.listSurveys(examId)).toMatchObject([{ attemptId: s1.attempt!.id, candidate: { name: "가" }, exam: { id: examId }, answers: survey.answers, issue: "멈춤" }]);
+      expect(await store.listSurveys("00000000-0000-0000-0000-000000000000")).toEqual([]);
       expect(await store.deleteCandidate(examId, t1.id)).toBe(false); // 응시 기록 있음
       const t2 = after.find((c) => c.employee_no === "T2")!;
       expect(await store.deleteCandidate(examId, t2.id)).toBe(true);
@@ -85,6 +96,9 @@ describe.skipIf(!url || !key)("supabase store exam admin (integration)", () => {
       expect((await store.findSession(t1.access_token))).toMatchObject({ attempt: null, responses: [] });
       expect(Date.parse((await store.findSession(t1.access_token))!.candidate.retake_until!)).toBe(Date.parse(until));
       const archiveId = reset.retakes[0].id;
+      expect(await store.listSurveys(examId)).toEqual([]); // 설문은 보관본으로 옮겨짐
+      const snap = await (await fetch(`${url!.replace(/\/+$/, "")}/rest/v1/attempt_archives?id=eq.${archiveId}&select=snapshot`, { headers: { apikey: key!, Authorization: `Bearer ${key}` } })).json();
+      expect(snap[0].snapshot.survey).toMatchObject({ issue: "멈춤", had_issue: true });
       expect(await store.clearArchiveScores("00000000-0000-0000-0000-000000000000", t1.id, archiveId)).toBe(false); // 다른 시험
       expect(await store.clearArchiveScores(examId, t1.id, archiveId)).toBe(true);
       expect(await store.clearArchiveScores(examId, t1.id, archiveId)).toBe(false); // 이미 지움
