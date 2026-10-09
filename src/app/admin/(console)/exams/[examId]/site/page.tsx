@@ -13,7 +13,7 @@ export default async function SitePage({ params }: PageProps<"/admin/exams/[exam
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">② 응시 사이트 설정</h2>
-      <SiteForm examId={examId} values={{ time_limit_min: exam.time_limit_min, intro_text: exam.intro_text, show_result: exam.show_result }} started={started} />
+      <SiteForm examId={examId} values={{ time_limit_min: exam.time_limit_min, intro_text: exam.intro_text, show_result: exam.show_result, collect_survey: exam.collect_survey }} started={started} />
     </section>
   );
 }

@@ -8,7 +8,7 @@ const initial: ExamFormState = { ok: false, message: null };
 
 interface Props {
   examId: string;
-  values: { time_limit_min: number; intro_text: string; show_result: boolean };
+  values: { time_limit_min: number; intro_text: string; show_result: boolean; collect_survey: boolean };
   started: boolean;
 }
 
@@ -31,6 +31,13 @@ export default function SiteForm({ examId, values, started }: Props) {
           <span>
             <strong>응시자에게 결과 리포트 공개</strong>
             <span className="block text-zinc-500">서술형 채점이 모두 확정되면 응시 링크에서 개인 리포트를 볼 수 있습니다. 끄면 담당자만 봅니다.</span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input type="checkbox" name="collect_survey" defaultChecked={state.values ? state.values.collect_survey === "on" : values.collect_survey} className="mt-0.5 size-4" />
+          <span>
+            <strong>응시 후 설문 받기</strong>
+            <span className="block text-zinc-500">제출한 응시자에게 난이도·시간·문항 이해도 등 짧은 설문(선택)을 받습니다. 파일럿 운영이나 문항 개선에 씁니다.</span>
           </span>
         </label>
         <div className="flex items-center gap-3">

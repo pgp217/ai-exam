@@ -1,5 +1,7 @@
-# 신입사원 AI 역량 시험 — 설계안 v0.8
+# 신입사원 AI 역량 시험 — 설계안 v0.9
 
+> v0.9 변경(파일럿 준비): 시험별로 켜는 응시 후 설문(`exams.collect_survey`, `attempt_surveys`). 5점 척도 5문항 + 오류·불편 + 자유 의견, 응시 1건당 1회, 점수 미반영. 관리자 설문 화면에서 문항별 평균·분포와 오류 신고를 본다(`0005_survey.sql`). 파일럿 계획은 `docs/pilot.md`.
+>
 > v0.8 변경(재응시): 관리자가 사유를 적고 재응시를 허용한다. `attempts` 의 1인 1회 제약은 그대로 두고, 이전 응시(응답·AI 채점·확정 점수·결과)를 `attempt_archives` 에 보관한 뒤 지워 같은 링크로 다시 응시하게 한다. 시험이 열려 있을 때만 허용하며, 남은 기간이 제한 시간보다 짧으면 대상자별 재응시 마감(`candidates.retake_until`)을 받는다. 재응시 점수 확정 뒤에는 보관본의 채점 기록만 지울 수 있다(응답 원문·사유는 유지). 정합성 점검은 재응시 대상자를 제외한다(`0004_retake.sql`).
 >
 > v0.7 변경(6단계): 정합성 점검 스크립트(`scripts/crosscheck.py`)로 저장된 모든 결과를 독립 재계산과 대조. 보안 헤더와 CSV 수식 주입 방지 추가. 운영 가이드는 README.
@@ -113,6 +115,7 @@
 - 결과 목록: 이름, 소속, 사번, 기수, 응시 상태, 채점 상태, 응답 신뢰도, 유형, 등급 + 필터
 - 서술형 채점 리뷰: AI 1차 점수·근거(응답 원문 인용)를 보고 기준별 점수를 조정·확정, AI와 다르면 사유 필수
 - 개인 리포트 보기
+- 응시 후 설문 결과: 시험별 문항 평균·분포, 오류·불편 신고, 자유 의견 (개인 리포트 화면에도 표시)
 - 재응시 허용: 대상자 화면에서 사유(필수)와 필요하면 재응시 마감을 입력. 이전 응시 기록(보관 시각·당시 상태·등급·사유) 확인, 재응시 확정 뒤 이전 채점 기록 삭제
 
 **응시자** (로그인 없이 개인별 응시 링크)
@@ -150,6 +153,8 @@ results          (attempt_id PK, knowledge_score, practice_score?, total?, grade
 notice_templates (id, exam_id, channel, subject, body)
 attempt_archives (id, candidate_id, attempt_id, status, grade, reason, archived_by,
                   archived_at, scores_cleared_at, snapshot jsonb)  -- 재응시로 보관한 이전 응시
+attempt_surveys  (attempt_id PK, answers jsonb, had_issue, issue, comment, created_at)  -- 응시 후 설문
+-- exams.collect_survey: 시험별로 설문을 받을지
 -- candidates.retake_until: 대상자별 재응시 마감 (시험 기간보다 늦을 때만 의미 있음)
 ```
 

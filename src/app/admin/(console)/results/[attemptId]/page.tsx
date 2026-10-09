@@ -7,6 +7,8 @@ import { RELIABILITY_LABELS, SIGNAL_LABELS, type ReliabilityResult } from "@/lib
 import { CHAPTERS } from "@/lib/exam/factors";
 import { loadReport } from "@/lib/report/service";
 import { graderMode } from "@/lib/grading/mode";
+import { getStore } from "@/lib/attempt/store";
+import SurveyAnswers from "../../surveys/survey-answers";
 import FeedbackEditor from "./feedback-editor";
 
 // 피드백 다시 생성(Server Action)이 Claude API 를 기다린다
@@ -21,6 +23,7 @@ export default async function AdminReportPage({ params }: PageProps<"/admin/resu
   if (!loaded) notFound();
   const { report, result, cohort, feedback } = loaded;
   const rel = report.reliability as ReliabilityResult | null;
+  const survey = (await getStore().listSurveys(report.exam.id)).find((s) => s.attemptId === attemptId);
 
   return (
     <div className="space-y-6">
@@ -40,6 +43,15 @@ export default async function AdminReportPage({ params }: PageProps<"/admin/resu
           <span className="text-xs text-zinc-500">응시자 공개: {report.exam.show_result ? "공개 시험 (확정 후 응시 링크에서 열람)" : "비공개 시험"}</span>
         </div>
       </div>
+
+      {survey && (
+        <details className="rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
+          <summary className="cursor-pointer font-semibold">
+            응시 후 설문 {survey.had_issue && <span className="ml-1 text-sm font-medium text-red-600">· 오류·불편 신고 있음</span>}
+          </summary>
+          <div className="mt-3"><SurveyAnswers survey={survey} /></div>
+        </details>
+      )}
 
       {!result ? (
         <p className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-zinc-500 dark:border-zinc-700">

@@ -7,8 +7,9 @@ import { simulateCohort } from "../exam/simulate";
 import { mergeResponses, scoreSubmission } from "./responses";
 import type {
   AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
-  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate, RetakeRecord,
+  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate, RetakeRecord, SurveyRow,
 } from "./types";
+import type { Survey } from "../survey/survey";
 
 interface Candidate extends CandidateInfo {
   id: string;
@@ -26,7 +27,7 @@ interface Archive extends RetakeRecord {
   candidate_id: string;
   attempt_id: string;
   archived_by: string | null;
-  snapshot: { attempt: AttemptRow; result: unknown; responses: (StoredResponse & { ai_gradings?: AiGradingRow[]; final_grading?: FinalGradingRow | null })[] };
+  snapshot: { attempt: AttemptRow; result: unknown; survey?: unknown; responses: (StoredResponse & { ai_gradings?: AiGradingRow[]; final_grading?: FinalGradingRow | null })[] };
 }
 
 type StoredResponse = ResponseRow & { id: string };
@@ -43,6 +44,7 @@ export interface MemoryDb {
   admins: Map<string, { name: string }>; // user_id → 관리자
   notices: Map<string, NoticeTemplate[]>; // exam_id → 안내문
   archives: Archive[];
+  surveys: Map<string, Survey & { created_at: string }>; // attempt_id → 설문
 }
 
 export const MEMORY_ADMIN_ID = "00000000-0000-4000-8000-00000000ad01";
@@ -63,6 +65,7 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
     time_limit_min: 40,
     intro_text: "생성형 AI 활용 교재 Ch 1~11 내용을 바탕으로 생성형 AI 활용 역량을 확인합니다.",
     show_result: true,
+    collect_survey: true,
     item_set_version: ITEM_SET_VERSION,
     status: "open",
   };
@@ -82,6 +85,7 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
     admins: new Map([[MEMORY_ADMIN_ID, { name: "데모 관리자" }]]),
     notices: new Map(),
     archives: [],
+    surveys: new Map(),
   };
   if (opts.simulated) addSimulated(db, exam, opts.simulated, now);
   return db;
@@ -132,6 +136,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
         exam: { ...exam },
         attempt: attempt && { ...attempt },
         responses: attempt ? (db.responses.get(attempt.id) ?? []).map((r) => ({ item_id: r.item_id, answer: clone(r.answer), response_ms: r.response_ms, pasted: r.pasted })) : [],
+        surveyDone: !!attempt && db.surveys.has(attempt.id),
       };
     },
 
@@ -163,6 +168,12 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       a.duration_sec = input.durationSec;
       db.reliability.set(a.id, input.reliability);
       db.results.set(a.id, { knowledge_score: input.knowledgeScore, detail: input.detail, status: "grading" });
+      return true;
+    },
+
+    async saveSurvey(attemptId, survey) {
+      if (db.surveys.has(attemptId) || !db.attempts.some((a) => a.id === attemptId)) return false;
+      db.surveys.set(attemptId, { ...clone(survey), created_at: new Date(Date.now() + db.surveys.size).toISOString() });
       return true;
     },
 
@@ -297,6 +308,19 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       if (r) r.feedback = clone(feedback);
     },
 
+    async listSurveys(examId) {
+      return [...db.surveys.entries()]
+        .flatMap(([attemptId, s]): SurveyRow[] => {
+          const a = db.attempts.find((x) => x.id === attemptId);
+          if (!a) return [];
+          const c = candidateOf(a);
+          if (examId && c.exam_id !== examId) return [];
+          const exam = db.exams.find((e) => e.id === c.exam_id)!;
+          return [{ ...clone(s), attemptId, candidate: info(c), exam: { id: exam.id, title: exam.title } }];
+        })
+        .sort((x, y) => y.created_at.localeCompare(x.created_at));
+    },
+
     async listExamSummaries() {
       return [...db.exams].reverse().map((e): ExamSummary => {
         const cands = db.candidates.filter((c) => c.exam_id === e.id);
@@ -380,6 +404,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
             ai_gradings: db.aiGradings.filter((g) => g.response_id === r.id),
             final_grading: db.finals.find((f) => f.response_id === r.id) ?? null,
           })),
+          survey: db.surveys.get(a.id) ?? null,
         }),
       });
       const ids = new Set(responses.map((r) => r.id));
@@ -387,6 +412,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       db.responses.delete(a.id);
       db.results.delete(a.id);
       db.reliability.delete(a.id);
+      db.surveys.delete(a.id);
       db.aiGradings = db.aiGradings.filter((g) => !ids.has(g.response_id));
       db.finals = db.finals.filter((f) => !ids.has(f.response_id));
       c.retake_until = input.retakeUntil;

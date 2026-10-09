@@ -31,7 +31,7 @@ export async function createExam(form: { title?: string; starts?: string; ends?:
   const basic = parseBasic(form);
   if (!basic.ok) return { ok: false, error: "입력값을 확인해 주세요.", fields: basic.errors };
   const id = await getStore().createExam(
-    { ...basic.value, time_limit_min: 40, intro_text: DEFAULT_INTRO, show_result: true, item_set_version: ITEM_SET_VERSION },
+    { ...basic.value, time_limit_min: 40, intro_text: DEFAULT_INTRO, show_result: true, collect_survey: false, item_set_version: ITEM_SET_VERSION },
     adminId,
   );
   return { ok: true, value: id };
@@ -45,7 +45,7 @@ export async function updateBasic(examId: string, form: { title?: string; starts
   return { ok: true };
 }
 
-export async function updateSite(examId: string, form: { time_limit_min?: string; intro_text?: string; show_result?: string | null }): Promise<Result> {
+export async function updateSite(examId: string, form: { time_limit_min?: string; intro_text?: string; show_result?: string | null; collect_survey?: string | null }): Promise<Result> {
   const site = parseSite(form);
   if (!site.ok) return { ok: false, error: "입력값을 확인해 주세요.", fields: site.errors };
   const store = getStore();

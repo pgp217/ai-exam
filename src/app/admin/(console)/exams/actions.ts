@@ -21,7 +21,7 @@ export interface ExamFormState {
 
 const echo = (form: FormData, keys: string[]) => Object.fromEntries(keys.map((k) => [k, String(form.get(k) ?? "")]));
 const BASIC = ["title", "starts", "ends"];
-const SITE = ["time_limit_min", "intro_text", "show_result"];
+const SITE = ["time_limit_min", "intro_text", "show_result", "collect_survey"];
 const CANDIDATE = ["employee_no", "name", "email", "phone", "department", "cohort", "joined_at"];
 
 const str = (form: FormData, key: string) => (form.get(key) == null ? undefined : String(form.get(key)));
@@ -44,7 +44,7 @@ export async function saveBasicAction(_prev: ExamFormState, form: FormData): Pro
 export async function saveSiteAction(_prev: ExamFormState, form: FormData): Promise<ExamFormState> {
   await requireAdmin();
   const r = await updateSite(String(form.get("examId")), {
-    time_limit_min: str(form, "time_limit_min"), intro_text: str(form, "intro_text"), show_result: str(form, "show_result") ?? null,
+    time_limit_min: str(form, "time_limit_min"), intro_text: str(form, "intro_text"), show_result: str(form, "show_result") ?? null, collect_survey: str(form, "collect_survey") ?? null,
   });
   if (!r.ok) return { ok: false, message: r.error, fields: r.fields, values: echo(form, SITE) };
   refresh();

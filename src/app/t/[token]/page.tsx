@@ -6,6 +6,7 @@ import { loadReport } from "@/lib/report/service";
 import Report from "@/components/report/report";
 import ExamRunner from "./exam-runner";
 import StartForm from "./start-form";
+import SurveyForm from "./survey-form";
 
 // 마감 지난 응시를 열면 자동 제출하고 after() 로 AI 채점을 시작한다
 export const maxDuration = 300;
@@ -48,6 +49,7 @@ export default async function TakeExamPage({ params }: PageProps<"/t/[token]">) 
             <h1 className="mt-1 text-2xl font-bold">{view.exam.title}</h1>
           </header>
           <Report result={loaded.result} cohort={loaded.cohort} feedback={approved} feedbackPending={!approved} />
+          {view.survey === "ask" && <SurveyForm token={token} done={false} />}
           <p className="text-xs text-zinc-500">이 리포트는 본인만 볼 수 있도록 개인 응시 링크로 제공됩니다. 링크를 다른 사람과 공유하지 마세요.</p>
         </main>
       );
@@ -87,6 +89,8 @@ export default async function TakeExamPage({ params }: PageProps<"/t/[token]">) 
           </p>
         </Notice>
       )}
+
+      {view.state === "submitted" && view.survey !== "off" && <SurveyForm token={token} done={view.survey === "done"} />}
     </main>
   );
 }

@@ -5,7 +5,7 @@ import "server-only";
 import { ESSAY_ITEMS } from "../exam/items";
 import type {
   AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
-  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput,
+  FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput, SurveyRow,
 } from "./types";
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -32,7 +32,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-const EXAM_COLUMNS = "id,title,starts_at,ends_at,time_limit_min,intro_text,show_result,item_set_version,status";
+const EXAM_COLUMNS = "id,title,starts_at,ends_at,time_limit_min,intro_text,show_result,collect_survey,item_set_version,status";
 const UPSERT_CHUNK = 500;
 
 export function createSupabaseStore(url: string, key: string): ExamStore & GradingStore & ReportStore & ExamAdminStore {
@@ -58,13 +58,14 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
     return data as T;
   }
 
+  type AttemptJoin = AttemptRow & { responses: ResponseRow[]; survey: { attempt_id: string } | { attempt_id: string }[] | null };
   type CandidateJoin = {
     id: string;
     name: string;
     retake_until: string | null;
     exam: ExamRow;
     // attempts.candidate_id 가 unique 라 PostgREST 는 객체로 돌려주지만, 배열이어도 처리한다
-    attempt: (AttemptRow & { responses: ResponseRow[] }) | (AttemptRow & { responses: ResponseRow[] })[] | null;
+    attempt: AttemptJoin | AttemptJoin[] | null;
   };
 
   const CANDIDATE_INFO = "name,employee_no,department,cohort";
@@ -74,8 +75,8 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
     async findSession(token) {
       const select = [
         "id,name,retake_until",
-        "exam:exams(id,title,starts_at,ends_at,time_limit_min,intro_text,show_result,item_set_version,status)",
-        "attempt:attempts(id,candidate_id,started_at,submitted_at,duration_sec,status,responses(item_id,answer,response_ms,pasted))",
+        `exam:exams(${EXAM_COLUMNS})`,
+        "attempt:attempts(id,candidate_id,started_at,submitted_at,duration_sec,status,responses(item_id,answer,response_ms,pasted),survey:attempt_surveys(attempt_id))",
       ].join(",");
       const rows = await rest<CandidateJoin[]>(`/candidates?access_token=eq.${encodeURIComponent(token)}&select=${select}`);
       const c = rows[0];
@@ -86,6 +87,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
         exam: c.exam,
         attempt: a ? { id: a.id, candidate_id: a.candidate_id, started_at: a.started_at, submitted_at: a.submitted_at, duration_sec: a.duration_sec, status: a.status } : null,
         responses: a?.responses ?? [],
+        surveyDone: !!one(a?.survey),
       };
       return session;
     },
@@ -117,6 +119,15 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
           p_detail: input.detail,
         },
       });
+    },
+
+    async saveSurvey(attemptId, survey) {
+      const rows = await rest<unknown[]>("/attempt_surveys?on_conflict=attempt_id", {
+        method: "POST",
+        body: { attempt_id: attemptId, ...survey },
+        prefer: "resolution=ignore-duplicates,return=representation",
+      });
+      return rows.length > 0;
     },
 
     // ── 채점 ─────────────────────────────────────────
@@ -319,6 +330,20 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
         method: "PATCH",
         body: { feedback },
         prefer: "return=minimal",
+      });
+    },
+
+    async listSurveys(examId) {
+      type Row = Omit<SurveyRow, "attemptId" | "candidate" | "exam"> & {
+        attempt_id: string;
+        attempt: { candidate: CandidateInfo & { exam: { id: string; title: string } } };
+      };
+      const select = `attempt_id,answers,had_issue,issue,comment,created_at,attempt:attempts!inner(candidate:candidates!inner(${CANDIDATE_INFO},exam_id,exam:exams(id,title)))`;
+      const filter = examId ? `&attempt.candidate.exam_id=eq.${encodeURIComponent(examId)}` : "";
+      const rows = await rest<Row[]>(`/attempt_surveys?select=${select}${filter}&order=created_at.desc`);
+      return rows.map(({ attempt_id, attempt, ...s }): SurveyRow => {
+        const { exam, ...c } = attempt.candidate;
+        return { ...s, attemptId: attempt_id, candidate: { name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort }, exam };
       });
     },
 

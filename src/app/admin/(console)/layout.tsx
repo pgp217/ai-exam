@@ -17,6 +17,7 @@ export default async function ConsoleLayout({ children }: LayoutProps<"/admin">)
             <Link href="/admin/exams" className="hover:text-zinc-900 dark:hover:text-zinc-100">시험 관리</Link>
             <Link href="/admin/grading" className="hover:text-zinc-900 dark:hover:text-zinc-100">서술형 채점</Link>
             <Link href="/admin/results" className="hover:text-zinc-900 dark:hover:text-zinc-100">결과 목록</Link>
+            <Link href="/admin/surveys" className="hover:text-zinc-900 dark:hover:text-zinc-100">설문</Link>
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
             <span className="text-zinc-500">{admin.name}</span>
