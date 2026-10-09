@@ -117,7 +117,7 @@ export interface CandidateInfo {
 export interface ReviewAttempt {
   attempt: AttemptRow & { reliability: unknown };
   candidate: CandidateInfo;
-  exam: { id: string; title: string };
+  exam: { id: string; title: string; item_set_version: string };
   knowledgeScore: number | null;
   resultStatus: "grading" | "complete" | null;
   responses: (ResponseRow & { id: string })[];
@@ -193,7 +193,7 @@ export interface ReportData {
   durationSec: number | null;
   reliability: unknown;
   candidate: CandidateInfo;
-  exam: { id: string; title: string; show_result: boolean };
+  exam: { id: string; title: string; show_result: boolean; item_set_version: string };
   result: { status: "grading" | "complete"; detail: unknown; feedback: Feedback | null } | null;
 }
 

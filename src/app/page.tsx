@@ -1,8 +1,9 @@
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "@/lib/exam/items";
+import { currentItemSet } from "@/lib/exam/items";
 import { MID_FACTORS, TOP_FACTORS } from "@/lib/exam/factors";
 import { storeMode } from "@/lib/attempt/service";
 
 export default function Home() {
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = currentItemSet();
   const demo = process.env.NODE_ENV !== "production" && storeMode() === "memory";
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-16">

@@ -1,7 +1,8 @@
 // 응시 흐름 (서버 전용). 페이지와 API Route 가 함께 쓴다.
 import "server-only";
 
-import { ANSWER_KEY } from "../exam/answer-key";
+import { scoringKey } from "../exam/answer-key";
+import { itemSet } from "../exam/items";
 import { scheduleGrading } from "../grading/service";
 import { mergeResponses, missingEssayRows, parseResponses, scoreSubmission } from "./responses";
 import { InvalidSurveyError, parseSurvey, type Survey } from "../survey/survey";
@@ -18,7 +19,7 @@ async function findSession(store: ExamStore, token: string): Promise<Session | n
 export { storeMode } from "./store";
 
 // ── 화면 상태 ───────────────────────────────────────────
-export type PublicExam = Pick<ExamRow, "title" | "intro_text" | "time_limit_min" | "starts_at" | "ends_at" | "show_result">;
+export type PublicExam = Pick<ExamRow, "title" | "intro_text" | "time_limit_min" | "starts_at" | "ends_at" | "show_result" | "item_set_version">;
 
 export type SessionView =
   | { state: "not-found" }
@@ -33,7 +34,7 @@ export type SurveyState = "off" | "ask" | "done";
 const surveyState = (s: Session): SurveyState => (!s.exam.collect_survey ? "off" : s.surveyDone ? "done" : "ask");
 
 function publicExam(e: ExamRow): PublicExam {
-  return { title: e.title, intro_text: e.intro_text, time_limit_min: e.time_limit_min, starts_at: e.starts_at, ends_at: e.ends_at, show_result: e.show_result };
+  return { title: e.title, intro_text: e.intro_text, time_limit_min: e.time_limit_min, starts_at: e.starts_at, ends_at: e.ends_at, show_result: e.show_result, item_set_version: e.item_set_version };
 }
 
 /** 응시 링크로 들어왔을 때의 화면 상태. 마감이 지난 응시는 저장된 응답으로 제출 처리한다. */
@@ -76,24 +77,22 @@ export async function startAttempt(token: string): Promise<ActionResult> {
 }
 
 export async function saveResponses(token: string, body: unknown): Promise<ActionResult> {
-  const parsed = parse(body);
-  if (!Array.isArray(parsed)) return parsed;
-
   const store = getStore();
   const s = await findSession(store, token);
   if (!s?.attempt) return err(404, "진행 중인 응시가 없습니다.");
+  const parsed = parse(body, s);
+  if (!Array.isArray(parsed)) return parsed;
   if (!acceptsAnswers(s.exam, s.attempt, Date.now())) return err(409, "응시 시간이 끝났거나 이미 제출했습니다.");
   if (!(await store.saveResponses(s.attempt.id, parsed))) return err(409, "이미 제출했습니다.");
   return { ok: true };
 }
 
 export async function submitAttempt(token: string, body: unknown): Promise<ActionResult> {
-  const parsed = parse(body);
-  if (!Array.isArray(parsed)) return parsed;
-
   const store = getStore();
   const s = await findSession(store, token);
   if (!s?.attempt) return err(404, "진행 중인 응시가 없습니다.");
+  const parsed = parse(body, s);
+  if (!Array.isArray(parsed)) return parsed;
   if (s.attempt.status !== "in_progress") return { ok: true }; // 중복 제출은 무시
 
   const now = Date.now();
@@ -119,9 +118,10 @@ export async function submitSurvey(token: string, body: unknown): Promise<Action
   return { ok: true };
 }
 
-function parse(body: unknown): ResponseRow[] | ActionResult {
+/** 응답은 그 시험의 문항 세트(item_set_version) 기준으로 검증한다 */
+function parse(body: unknown, s: Session): ResponseRow[] | ActionResult {
   try {
-    return parseResponses((body as { responses?: unknown } | null)?.responses ?? []);
+    return parseResponses((body as { responses?: unknown } | null)?.responses ?? [], itemSet(s.exam.item_set_version));
   } catch (e) {
     return err(400, e instanceof Error ? e.message : "invalid request");
   }
@@ -129,10 +129,11 @@ function parse(body: unknown): ResponseRow[] | ActionResult {
 
 async function finalize(store: ExamStore, s: Session, incoming: ResponseRow[], now: number) {
   const attempt = s.attempt!;
+  const set = itemSet(s.exam.item_set_version);
   // 답하지 않은 서술형도 빈 답안으로 저장해 채점·확정 대상이 되게 한다
-  const rows = [...incoming, ...missingEssayRows(mergeResponses(s.responses, incoming))];
-  const all = mergeResponses(s.responses, rows);
-  const { knowledge, detail, reliability } = scoreSubmission(all, ANSWER_KEY);
+  const rows = [...incoming, ...missingEssayRows(mergeResponses(s.responses, incoming, set), set)];
+  const all = mergeResponses(s.responses, rows, set);
+  const { knowledge, detail, reliability } = scoreSubmission(all, set, scoringKey(s.exam.item_set_version).answerKey);
   const submitted = await store.submitAttempt({
     attemptId: attempt.id,
     responses: rows,

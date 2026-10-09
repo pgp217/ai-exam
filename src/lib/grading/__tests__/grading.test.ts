@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ESSAY_ITEMS } from "../../exam/items";
-import { ANSWER_KEY, rubricFor } from "../../exam/answer-key.data";
 import {
   InvalidGraderOutputError, agreementRate, buildUserPrompt, differsFromAi, fakeGrade, gradeEmpty, normalizeOutput,
   parseCriterionScores, quoteFound, type GraderOutput,
@@ -8,6 +6,16 @@ import {
 import { missingEssayRows, scoreSubmission } from "../../attempt/responses";
 import { createMemoryStore, demoDb } from "../../attempt/memory-store";
 import type { ResponseRow } from "../../attempt/types";
+import { itemSet } from "../../exam/items";
+import { rubricFor as rubricOf, scoringKey } from "../../exam/answer-key.data";
+
+// 기존 테스트는 문항 세트 v1 기준으로 검증한다
+const SET = itemSet("NEWHIRE-AI-v1");
+const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = SET;
+const { answerKey: ANSWER_KEY, rubrics: RUBRICS } = scoringKey("NEWHIRE-AI-v1");
+const rubricFor = (id: string) => rubricOf(scoringKey("NEWHIRE-AI-v1"), id);
+void CHOICE_ITEMS; void SELF_ITEMS; void ESSAY_ITEMS; void RUBRICS; void rubricFor;
+
 
 const E1 = ESSAY_ITEMS[0];
 const R1 = rubricFor("E1");
@@ -97,13 +105,13 @@ describe("reviewer input", () => {
 
 describe("final scoring", () => {
   it("adds empty rows for unanswered essays", () => {
-    expect(missingEssayRows([{ item_id: "E2" }]).map((r) => r.item_id)).toEqual(["E1", "E3"]);
+    expect(missingEssayRows([{ item_id: "E2" }], SET).map((r) => r.item_id)).toEqual(["E1", "E3"]);
   });
 
   it("completes the result once every essay has a confirmed score", () => {
     const rows: ResponseRow[] = Object.entries(ANSWER_KEY).map(([id, v]) => ({ item_id: id, answer: { value: v }, response_ms: 10000, pasted: false }));
-    expect(scoreSubmission(rows, ANSWER_KEY, { E1: 100, E2: 100 }).detail.status).toBe("grading");
-    const done = scoreSubmission(rows, ANSWER_KEY, { E1: 100, E2: 100, E3: 100 }).detail;
+    expect(scoreSubmission(rows, SET, ANSWER_KEY, { E1: 100, E2: 100 }).detail.status).toBe("grading");
+    const done = scoreSubmission(rows, SET, ANSWER_KEY, { E1: 100, E2: 100, E3: 100 }).detail;
     expect(done.status).toBe("complete");
     expect(done.total).toBe(100);
     expect(done.grade).toBe("A+");
@@ -132,7 +140,7 @@ describe("grading service (memory store, fake grader)", () => {
       { item_id: "E2", answer: { text: "87.3%와 42%의 출처를 OO연구원 원문 보고서에서 확인하고, 인과관계 비약을 지적한 뒤 확인 전에는 보류합니다." }, response_ms: 60000, pasted: false },
       // E3 은 미응답
     ];
-    await store.submitAttempt({ attemptId, responses: [...answers, ...missingEssayRows(answers)], durationSec: 600, reliability: null, knowledgeScore: 100, detail: {} });
+    await store.submitAttempt({ attemptId, responses: [...answers, ...missingEssayRows(answers, SET)], durationSec: 600, reliability: null, knowledgeScore: 100, detail: {} });
     return { store, attemptId };
   }
 

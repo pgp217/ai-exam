@@ -2,8 +2,9 @@
 import "server-only";
 
 import { after } from "next/server";
-import { ANSWER_KEY, rubricFor } from "../exam/answer-key";
-import { ESSAY_ITEMS, type EssayItem } from "../exam/items";
+import { rubricFor, scoringKey } from "../exam/answer-key";
+import type { Rubric } from "../exam/answer-key.data";
+import { itemSet, type EssayItem } from "../exam/items";
 import { essayScoreFromCriteria } from "../exam/scoring";
 import { missingEssayRows, scoreSubmission } from "../attempt/responses";
 import { getStore } from "../attempt/store";
@@ -17,8 +18,7 @@ import {
 
 const textOf = (r: ReviewAttempt["responses"][number] | undefined) => (r && "text" in r.answer ? r.answer.text : "");
 
-async function gradeOne(item: EssayItem, responseId: string, answer: string): Promise<NewAiGrading> {
-  const rubric = rubricFor(item.id);
+async function gradeOne(item: EssayItem, rubric: Rubric, responseId: string, answer: string): Promise<NewAiGrading> {
   const base = { response_id: responseId, prompt_version: PROMPT_VERSION };
 
   if (answer.trim() === "") {
@@ -52,14 +52,17 @@ export async function gradeAttemptEssays(attemptId: string, opts: { force?: bool
   const store = getStore();
   let review = await store.getReviewAttempt(attemptId);
   if (!review || review.attempt.status === "in_progress") return { graded: [], failed: [] };
+  // 채점은 그 시험의 문항 세트·기준표 버전으로 한다
+  const set = itemSet(review.exam.item_set_version);
+  const key = scoringKey(review.exam.item_set_version);
 
-  const missing = missingEssayRows(review.responses);
+  const missing = missingEssayRows(review.responses, set);
   if (missing.length > 0) {
     await store.ensureResponses(attemptId, missing);
     review = (await store.getReviewAttempt(attemptId))!;
   }
 
-  const targets = ESSAY_ITEMS.filter((item) => {
+  const targets = set.essay.filter((item) => {
     if (opts.itemIds && !opts.itemIds.includes(item.id)) return false;
     const resp = review!.responses.find((r) => r.item_id === item.id)!;
     return opts.force || !review!.aiGradings.some((g) => g.response_id === resp.id);
@@ -68,7 +71,7 @@ export async function gradeAttemptEssays(attemptId: string, opts: { force?: bool
   const settled = await Promise.allSettled(
     targets.map(async (item) => {
       const resp = review!.responses.find((r) => r.item_id === item.id)!;
-      await store.insertAiGrading(await gradeOne(item, resp.id, textOf(resp)));
+      await store.insertAiGrading(await gradeOne(item, rubricFor(key, item.id), resp.id, textOf(resp)));
       return item.id;
     }),
   );
@@ -83,7 +86,7 @@ export async function gradeAttemptEssays(attemptId: string, opts: { force?: bool
     }
   });
 
-  const done = ESSAY_ITEMS.every((item) => {
+  const done = set.essay.every((item) => {
     const resp = review!.responses.find((r) => r.item_id === item.id)!;
     return run.graded.includes(item.id) || review!.aiGradings.some((g) => g.response_id === resp.id);
   });
@@ -114,14 +117,14 @@ export async function confirmGrading(input: {
   reason: string;
 }): Promise<ConfirmResult> {
   const store = getStore();
-  const item = ESSAY_ITEMS.find((e) => e.id === input.itemId);
-  if (!item) return { ok: false, error: "알 수 없는 문항입니다." };
   const review = await store.getReviewAttempt(input.attemptId);
   if (!review || review.attempt.status === "in_progress") return { ok: false, error: "제출된 응시가 아닙니다." };
+  const item = itemSet(review.exam.item_set_version).essay.find((e) => e.id === input.itemId);
+  if (!item) return { ok: false, error: "알 수 없는 문항입니다." };
   const resp = review.responses.find((r) => r.item_id === item.id);
   if (!resp) return { ok: false, error: "응답이 없습니다. AI 채점을 먼저 실행해 주세요." };
 
-  const rubric = rubricFor(item.id);
+  const rubric = rubricFor(scoringKey(review.exam.item_set_version), item.id);
   const scores = parseCriterionScores(rubric, input.scores);
   if (typeof scores === "string") return { ok: false, error: scores };
 
@@ -149,15 +152,16 @@ export async function recomputeResult(attemptId: string): Promise<boolean> {
   const store = getStore();
   const review = await store.getReviewAttempt(attemptId);
   if (!review) return false;
+  const set = itemSet(review.exam.item_set_version);
 
   const essayScores = Object.fromEntries(
-    ESSAY_ITEMS.map((e) => {
+    set.essay.map((e) => {
       const resp = review.responses.find((r) => r.item_id === e.id);
       const final = review.finals.find((f) => f.response_id === resp?.id);
       return [e.id, final ? final.score : null];
     }),
   );
-  const { detail } = scoreSubmission(review.responses, ANSWER_KEY, essayScores);
+  const { detail } = scoreSubmission(review.responses, set, scoringKey(review.exam.item_set_version).answerKey, essayScores);
   const complete = detail.status === "complete";
 
   await store.updateResults(attemptId, {

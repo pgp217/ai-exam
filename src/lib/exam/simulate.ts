@@ -2,7 +2,7 @@
 // 실제 응시자와 구분되도록 이름에 "가상" 을 붙이고, 서술형 답안은 만들지 않고 확정 점수만 만든다.
 
 import type { ResponseRow } from "../attempt/types";
-import { ESSAY_ITEMS, CHOICE_ITEMS, SELF_ITEMS } from "./items";
+import type { ItemSet } from "./items";
 import type { Rubric } from "./answer-key.data";
 import { essayScoreFromCriteria } from "./scoring";
 
@@ -38,7 +38,8 @@ export interface SimulatedCandidate {
 }
 
 /** 능력치(0~1)에 따라 객관식 정답 확률, 서술형 기준 점수, 자기평가를 만든다 */
-export function simulateCohort(n: number, answerKey: Record<string, number>, rubrics: Rubric[], seed = 2026): SimulatedCandidate[] {
+export function simulateCohort(n: number, set: ItemSet, answerKey: Record<string, number>, rubrics: Rubric[], seed = 2026): SimulatedCandidate[] {
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = set;
   const r = rng(seed);
   return Array.from({ length: n }, (_, i) => {
     const knowledge = clamp(normal(r, 0.66, 0.16), 0.15, 0.98);

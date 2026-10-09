@@ -1,6 +1,6 @@
 // 문항 분석 (순수 함수): 객관식 정답률·변별도·보기 분포, 신뢰도(KR-20), 자기평가 분포와 과대·과소평가, 서술형 기준별 평균·AI 일치율.
 import { MID_FACTORS, type MidFactorId } from "../exam/factors";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "../exam/items";
+import type { ItemSet } from "../exam/items";
 import type { Rubric } from "../exam/answer-key.data";
 import type { ExamResult } from "../exam/scoring";
 import type { Answer } from "../attempt/types";
@@ -107,7 +107,8 @@ const valueOf = (a: AnalysisAttempt, itemId: string) => {
   return ans && "value" in ans ? ans.value : null;
 };
 
-export function analyzeItems(attempts: AnalysisAttempt[], answerKey: Record<string, number>, rubrics: Rubric[]): ItemAnalysis {
+export function analyzeItems(attempts: AnalysisAttempt[], set: ItemSet, answerKey: Record<string, number>, rubrics: Rubric[]): ItemAnalysis {
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = set;
   const n = attempts.length;
   // 응시자 × 객관식 정오 (무응답은 오답)
   const matrix = attempts.map((a) => CHOICE_ITEMS.map((it) => (valueOf(a, it.id) === answerKey[it.id] ? 1 : 0)));

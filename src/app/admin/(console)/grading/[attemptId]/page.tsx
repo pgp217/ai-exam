@@ -4,8 +4,8 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { RELIABILITY_STYLES, STATUS_LABELS, STATUS_STYLES } from "@/lib/admin/labels";
 import { scoreSubmission } from "@/lib/attempt/responses";
 import { getStore } from "@/lib/attempt/store";
-import { ANSWER_KEY, rubricFor } from "@/lib/exam/answer-key";
-import { ESSAY_ITEMS } from "@/lib/exam/items";
+import { rubricFor, scoringKey } from "@/lib/exam/answer-key";
+import { itemSet } from "@/lib/exam/items";
 import { RELIABILITY_LABELS, SIGNAL_LABELS, type ReliabilityResult } from "@/lib/exam/reliability";
 import { FAKE_MODEL } from "@/lib/grading/grade";
 import { graderMode } from "@/lib/grading/service";
@@ -24,6 +24,9 @@ export default async function ReviewPage({ params }: PageProps<"/admin/grading/[
   if (!review || review.attempt.status === "in_progress") notFound();
 
   const { attempt, candidate } = review;
+  // 이 응시가 속한 시험의 문항 세트·기준표로 보여 준다
+  const ESSAY_ITEMS = itemSet(review.exam.item_set_version).essay;
+  const key = scoringKey(review.exam.item_set_version);
   const rel = attempt.reliability as ReliabilityResult | null;
   const finalScores = Object.fromEntries(
     ESSAY_ITEMS.map((e) => {
@@ -31,7 +34,7 @@ export default async function ReviewPage({ params }: PageProps<"/admin/grading/[
       return [e.id, review.finals.find((f) => f.response_id === resp?.id)?.score ?? null];
     }),
   );
-  const { detail } = scoreSubmission(review.responses, ANSWER_KEY, finalScores);
+  const { detail } = scoreSubmission(review.responses, itemSet(review.exam.item_set_version), key.answerKey, finalScores);
   const essaysWithoutAi = ESSAY_ITEMS.filter((e) => {
     const resp = review.responses.find((r) => r.item_id === e.id);
     return !resp || !review.aiGradings.some((g) => g.response_id === resp.id);
@@ -98,7 +101,7 @@ export default async function ReviewPage({ params }: PageProps<"/admin/grading/[
             index={n + 1}
             attemptId={attempt.id}
             item={item}
-            rubric={rubricFor(item.id)}
+            rubric={rubricFor(key, item.id)}
             response={resp ? { text: "text" in resp.answer ? resp.answer.text : "", pasted: resp.pasted, responseMs: resp.response_ms } : null}
             ai={ais[0] ?? null}
             aiCount={ais.length}

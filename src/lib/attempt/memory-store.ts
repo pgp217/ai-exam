@@ -1,8 +1,8 @@
 // 개발용 메모리 저장소. Supabase 없이 응시 화면을 돌려 볼 때 쓴다 (서버 재시작 시 초기화).
 // 데모 응시 링크: /t/demo, /t/demo2, /t/demo3 · 데모 관리자: memory-auth.ts 참고
 
-import { ANSWER_KEY, RUBRICS } from "../exam/answer-key.data";
-import { ESSAY_ITEMS, ITEM_SET_VERSION } from "../exam/items";
+import { scoringKey } from "../exam/answer-key.data";
+import { ESSAY_ITEM_IDS, ITEM_SET_VERSION, itemSet, type ItemSet } from "../exam/items";
 import { simulateCohort } from "../exam/simulate";
 import { mergeResponses, scoreSubmission } from "./responses";
 import type {
@@ -51,9 +51,9 @@ export interface MemoryDb {
 export const MEMORY_ADMIN_ID = "00000000-0000-4000-8000-00000000ad01";
 
 /** 저장된 응답 위에 새 응답을 병합하고, 새로 생긴 응답에는 id 를 붙인다 */
-function mergeStored(saved: StoredResponse[], incoming: ResponseRow[]): StoredResponse[] {
+function mergeStored(saved: StoredResponse[], incoming: ResponseRow[], set: ItemSet): StoredResponse[] {
   const ids = new Map(saved.map((r) => [r.item_id, r.id]));
-  return mergeResponses(saved, incoming).map((r) => ({ ...r, id: ids.get(r.item_id) ?? crypto.randomUUID() }));
+  return mergeResponses(saved, incoming, set).map((r) => ({ ...r, id: ids.get(r.item_id) ?? crypto.randomUUID() }));
 }
 
 /** simulated: 동기 분포를 보여 주기 위한 가상 응시자 수 (채점까지 끝난 상태로 만든다) */
@@ -93,7 +93,9 @@ export function demoDb(now = Date.now(), opts: { simulated?: number } = {}): Mem
 }
 
 function addSimulated(db: MemoryDb, exam: ExamRow, n: number, now: number) {
-  simulateCohort(n, ANSWER_KEY, RUBRICS).forEach((sim, i) => {
+  const set = itemSet(exam.item_set_version);
+  const key = scoringKey(exam.item_set_version);
+  simulateCohort(n, set, key.answerKey, key.rubrics).forEach((sim, i) => {
     const candidateId = `sim-c${i + 1}`;
     const attemptId = `sim-a${i + 1}`;
     const submitted = new Date(now - (n - i) * 3600_000);
@@ -104,9 +106,9 @@ function addSimulated(db: MemoryDb, exam: ExamRow, n: number, now: number) {
     });
     const responses = sim.responses.map((r) => ({ ...r, id: crypto.randomUUID() }));
     db.responses.set(attemptId, responses);
-    const { detail, reliability } = scoreSubmission(sim.responses, ANSWER_KEY, sim.essayScores);
+    const { detail, reliability } = scoreSubmission(sim.responses, set, key.answerKey, sim.essayScores);
     db.reliability.set(attemptId, reliability);
-    for (const e of ESSAY_ITEMS) {
+    for (const e of set.essay) {
       const resp = responses.find((r) => r.item_id === e.id)!;
       db.finals.push({ response_id: resp.id, ai_grading_id: null, grader_id: MEMORY_ADMIN_ID, criterion_scores: sim.essayCriteria[e.id], score: sim.essayScores[e.id], override_reason: null, confirmed_at: submitted.toISOString() });
     }
@@ -122,6 +124,11 @@ const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (b
 export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingStore & ReportStore & ExamAdminStore & { db: MemoryDb } {
   const clone = structuredClone;
   const candidateOf = (a: AttemptRow) => db.candidates.find((c) => c.id === a.candidate_id)!;
+  /** 응시가 속한 시험의 문항 세트 */
+  const setOf = (attemptId: string) => {
+    const c = candidateOf(db.attempts.find((a) => a.id === attemptId)!);
+    return itemSet(db.exams.find((e) => e.id === c.exam_id)!.item_set_version);
+  };
   const info = (c: Candidate): CandidateInfo => ({ name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort });
 
   return {
@@ -156,14 +163,14 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
     async saveResponses(attemptId, responses) {
       const a = db.attempts.find((x) => x.id === attemptId);
       if (!a || a.status !== "in_progress") return false;
-      db.responses.set(attemptId, mergeStored(db.responses.get(attemptId) ?? [], clone(responses)));
+      db.responses.set(attemptId, mergeStored(db.responses.get(attemptId) ?? [], clone(responses), setOf(attemptId)));
       return true;
     },
 
     async submitAttempt(input) {
       const a = db.attempts.find((x) => x.id === input.attemptId);
       if (!a || a.status !== "in_progress") return false;
-      db.responses.set(a.id, mergeStored(db.responses.get(a.id) ?? [], clone(input.responses)));
+      db.responses.set(a.id, mergeStored(db.responses.get(a.id) ?? [], clone(input.responses), setOf(a.id)));
       a.status = "submitted";
       a.submitted_at = new Date().toISOString();
       a.duration_sec = input.durationSec;
@@ -190,13 +197,13 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
           const c = candidateOf(a);
           const responses = db.responses.get(a.id) ?? [];
           const aiGradingsById: Record<string, Record<string, number>> = {};
-          const essays = ESSAY_ITEMS.map((e) => {
-            const resp = responses.find((r) => r.item_id === e.id);
+          const essays = ESSAY_ITEM_IDS.map((itemId) => {
+            const resp = responses.find((r) => r.item_id === itemId);
             const ais = db.aiGradings.filter((g) => g.response_id === resp?.id).sort((x, y) => y.created_at.localeCompare(x.created_at));
             ais.forEach((g) => (aiGradingsById[g.id] = clone(g.criterion_scores)));
             const final = db.finals.find((f) => f.response_id === resp?.id);
             return {
-              itemId: e.id,
+              itemId,
               responseId: resp?.id ?? null,
               ai: ais[0] ? { id: ais[0].id, criterion_scores: clone(ais[0].criterion_scores), score: ais[0].score } : null,
               final: final ? { criterion_scores: clone(final.criterion_scores), score: final.score, ai_grading_id: final.ai_grading_id } : null,
@@ -220,7 +227,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       return {
         attempt: { ...clone(a), reliability: clone(db.reliability.get(a.id) ?? null) },
         candidate: info(c),
-        exam: { id: exam.id, title: exam.title },
+        exam: { id: exam.id, title: exam.title, item_set_version: exam.item_set_version },
         knowledgeScore: result?.knowledge_score ?? null,
         resultStatus: result?.status ?? null,
         responses: clone(responses),
@@ -232,7 +239,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
     async ensureResponses(attemptId, rows) {
       const saved = db.responses.get(attemptId) ?? [];
       const missing = rows.filter((r) => !saved.some((s) => s.item_id === r.item_id));
-      if (missing.length > 0) db.responses.set(attemptId, mergeStored(saved, clone(missing)));
+      if (missing.length > 0) db.responses.set(attemptId, mergeStored(saved, clone(missing), setOf(attemptId)));
     },
 
     async insertAiGrading(row) {
@@ -269,7 +276,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
       const r = db.results.get(a.id);
       return {
         attemptId: a.id, status: a.status, submittedAt: a.submitted_at, durationSec: a.duration_sec, reliability: clone(db.reliability.get(a.id) ?? null),
-        candidate: info(c), exam: { id: exam.id, title: exam.title, show_result: exam.show_result },
+        candidate: info(c), exam: { id: exam.id, title: exam.title, show_result: exam.show_result, item_set_version: exam.item_set_version },
         result: r ? { status: r.status, detail: clone(r.detail), feedback: clone(r.feedback ?? null) } : null,
       };
     },
@@ -329,7 +336,7 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
           const responses = db.responses.get(a.id) ?? [];
           const essays = Object.fromEntries(
             responses
-              .filter((r) => ESSAY_ITEMS.some((e) => e.id === r.item_id))
+              .filter((r) => ESSAY_ITEM_IDS.includes(r.item_id))
               .map((r) => {
                 const ai = db.aiGradings.filter((g) => g.response_id === r.id).sort((x, y) => y.created_at.localeCompare(x.created_at))[0];
                 const final = db.finals.find((f) => f.response_id === r.id);

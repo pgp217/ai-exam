@@ -2,7 +2,6 @@
 // 확정된 점수와 기준표만 보낸다. 이름·사번·소속은 넣지 않는다.
 
 import { CHAPTERS, type ChapterId } from "../exam/factors";
-import { ESSAY_ITEMS } from "../exam/items";
 import type { Rubric } from "../exam/answer-key.data";
 import type { ExamResult } from "../exam/scoring";
 import type { FeedbackAction } from "../attempt/types";
@@ -27,7 +26,7 @@ const levelText = (rubric: Rubric, key: string, score: number) => rubric.criteri
 export function buildFeedbackPrompt(
   result: ExamResult,
   // observed: 담당자가 확정한 점수와 같은 기준에 한해, AI 채점이 답안을 보고 쓴 판단 이유
-  essays: { itemId: string; criterionScores: Record<string, number>; rubric: Rubric; observed?: Record<string, string> }[],
+  essays: { itemId: string; title: string; criterionScores: Record<string, number>; rubric: Rubric; observed?: Record<string, string> }[],
 ): string {
   const lines: string[] = [];
   lines.push(`<overall>종합 ${result.total}점(${result.grade}), 지식 ${result.knowledge}점, 실전 ${result.practice}점, 유형: ${result.aiType?.name} — ${result.aiType?.desc}</overall>`);
@@ -39,8 +38,7 @@ export function buildFeedbackPrompt(
   lines.push("</factors>");
   lines.push("<essays>");
   for (const e of essays) {
-    const item = ESSAY_ITEMS.find((x) => x.id === e.itemId)!;
-    lines.push(`<essay title="${item.title}">`);
+    lines.push(`<essay title="${e.title}">`);
     for (const c of e.rubric.criteria) {
       const s = e.criterionScores[c.key];
       const now = s === 1 ? "최저 수준(다음 단계 미충족, 언급 없음 포함)" : `수준 설명: ${levelText(e.rubric, c.key, s)}`;

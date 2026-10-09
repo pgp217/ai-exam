@@ -2,7 +2,7 @@
 // 관리자 기능은 이 저장소를 쓰기 전에 서버 코드에서 관리자 여부를 반드시 확인한다.
 import "server-only";
 
-import { ESSAY_ITEMS } from "../exam/items";
+import { ESSAY_ITEM_IDS } from "../exam/items";
 import type {
   AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
   FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput, SurveyRow,
@@ -11,7 +11,7 @@ import type { AnalysisAttempt } from "../analysis/items";
 import type { ExamResult } from "../exam/scoring";
 
 const REQUEST_TIMEOUT_MS = 15_000;
-const ESSAY_FILTER = `in.(${ESSAY_ITEMS.map((e) => e.id).join(",")})`;
+const ESSAY_FILTER = `in.(${ESSAY_ITEM_IDS.join(",")})`;
 
 export class SupabaseError extends Error {
   constructor(
@@ -162,14 +162,14 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       );
       return rows.map((r): QueueRow => {
         const aiGradingsById: Record<string, Record<string, number>> = {};
-        const essays = ESSAY_ITEMS.map((e) => {
-          const resp = r.responses.find((x) => x.item_id === e.id);
+        const essays = ESSAY_ITEM_IDS.map((itemId) => {
+          const resp = r.responses.find((x) => x.item_id === itemId);
           const ais = [...(resp?.ai_gradings ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
           ais.forEach((g) => (aiGradingsById[g.id] = g.criterion_scores));
           const latest = ais[0];
           const final = one(resp?.final_gradings);
           return {
-            itemId: e.id,
+            itemId,
             responseId: resp?.id ?? null,
             ai: latest ? { id: latest.id, criterion_scores: latest.criterion_scores, score: Number(latest.score) } : null,
             final: final ? { ...final, score: Number(final.score) } : null,
@@ -183,7 +183,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
     async getReviewAttempt(attemptId) {
       type Row = AttemptRow & {
         reliability: unknown;
-        candidate: CandidateInfo & { exam: { id: string; title: string } };
+        candidate: CandidateInfo & { exam: { id: string; title: string; item_set_version: string } };
         result: { knowledge_score: number; status: "grading" | "complete" } | { knowledge_score: number; status: "grading" | "complete" }[] | null;
         responses: (ResponseRow & {
           id: string;
@@ -193,7 +193,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       };
       const select = [
         "id,candidate_id,started_at,submitted_at,duration_sec,status,reliability",
-        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title))`,
+        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title,item_set_version))`,
         "result:results(knowledge_score,status)",
         "responses(id,item_id,answer,response_ms,pasted,ai_gradings(id,response_id,model,prompt_version,criterion_scores,score,rationale,evidence,raw,created_at),final_gradings(*))",
       ].join(",");
@@ -264,13 +264,13 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
     async getReport(attemptId) {
       type Row = AttemptRow & {
         reliability: unknown;
-        candidate: CandidateInfo & { exam: { id: string; title: string; show_result: boolean } };
+        candidate: CandidateInfo & { exam: { id: string; title: string; show_result: boolean; item_set_version: string } };
         result: ReportResult | ReportResult[] | null;
       };
       type ReportResult = { status: "grading" | "complete"; detail: unknown; feedback: Feedback | null };
       const select = [
         "id,candidate_id,started_at,submitted_at,duration_sec,status,reliability",
-        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title,show_result))`,
+        `candidate:candidates(${CANDIDATE_INFO},exam:exams(id,title,show_result,item_set_version))`,
         "result:results(status,detail,feedback)",
       ].join(",");
       const rows = await rest<Row[]>(`/attempts?id=eq.${encodeURIComponent(attemptId)}&select=${select}`);
@@ -363,7 +363,7 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
         responses: r.responses.map((x) => ({ item_id: x.item_id, answer: x.answer })),
         essays: Object.fromEntries(
           r.responses
-            .filter((x) => ESSAY_ITEMS.some((e) => e.id === x.item_id))
+            .filter((x) => ESSAY_ITEM_IDS.includes(x.item_id))
             .map((x) => {
               const ai = [...x.ai_gradings].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
               return [x.item_id, { final: one(x.final_gradings)?.criterion_scores ?? null, ai: ai?.criterion_scores ?? null }];
