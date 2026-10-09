@@ -116,7 +116,7 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/admin/a
                     <tr key={c.itemId} id={c.itemId} className="align-top">
                       <td className="px-3 py-2">
                         <p><strong>{c.itemId}</strong> <span className="text-xs text-zinc-500">{midName(c.mid)}</span></p>
-                        <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">{item.prompt}</p>
+                        <p className="mt-0.5 whitespace-pre-line text-zinc-600 dark:text-zinc-400">{item.prompt}</p>
                         {c.flags.length > 0 && (
                           <p className="mt-1 flex flex-wrap gap-1">
                             {c.flags.map((f) => <span key={f} className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${FLAG_STYLES[f]}`}>{FLAG_LABELS[f]}</span>)}

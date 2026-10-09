@@ -325,7 +325,7 @@ function ItemView({ item, answer, onAnswer, onPaste }: { item: Item; answer: Ans
       <div className="mt-2 space-y-4">
         <h2 className="text-xl font-bold">{item.title}</h2>
         <div className="whitespace-pre-line rounded-lg bg-zinc-50 p-4 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">{item.scenario}</div>
-        <p className="font-medium">{item.prompt}</p>
+        <p className="whitespace-pre-line font-medium">{item.prompt}</p>
         <textarea
           value={text}
           onChange={(e) => onAnswer({ text: e.target.value })}
@@ -345,7 +345,7 @@ function ItemView({ item, answer, onAnswer, onPaste }: { item: Item; answer: Ans
   const options = item.type === "choice" ? item.options : LIKERT_LABELS;
   return (
     <fieldset className="mt-2">
-      <legend className="text-lg font-semibold leading-relaxed">{item.prompt}</legend>
+      <legend className="whitespace-pre-line text-lg font-semibold leading-relaxed">{item.prompt}</legend>
       <div className={`mt-4 ${item.type === "self" ? "grid gap-2 sm:grid-cols-5" : "space-y-2"}`}>
         {options.map((label, i) => {
           const v = i + 1;
