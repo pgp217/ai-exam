@@ -50,6 +50,7 @@
 | `supabase/migrations/0003_report_feedback.sql` | `results.feedback` (성장 피드백 저장) |
 | `supabase/migrations/0005_survey.sql` | 응시 후 설문(`attempt_surveys`), 시험별 설정 `exams.collect_survey`, 재응시 보관본에 설문 포함 |
 | `src/lib/survey/` · `src/app/admin/(console)/surveys` | 설문 문항·검증·집계, 관리자 설문 결과(문항별 평균·분포, 오류 신고, 자유 의견) |
+| `src/lib/analysis/` · `src/app/admin/(console)/analysis` | 문항 분석: 객관식 정답률·변별도(교정 점이연 상관, 상하위 27% 차)·보기 분포, KR-20 신뢰도, 자기평가 분포와 과대·과소평가, 서술형 기준별 평균과 AI 일치율 |
 | `docs/pilot.md` | 소규모 파일럿 운영 계획 (준비 → 운영 → 분석 → 개선) |
 | `supabase/migrations/0004_retake.sql` | 재응시: 이전 응시 보관(`attempt_archives`), 대상자별 재응시 마감(`candidates.retake_until`), `reset_attempt` · `clear_archive_scores` 함수 |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
@@ -127,6 +128,13 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 - 응시 1건당 1번만 받고 점수에는 반영하지 않는다. 결과 리포트가 열린 뒤에도 아직 안 냈으면 리포트 아래에 나온다.
 - **설문** 메뉴에서 시험별 문항 평균·분포, 오류·불편 신고, 자유 의견을 보고, 개인 결과 리포트 화면에서도 그 사람의 응답을 본다.
 - 재응시를 허용하면 설문도 이전 응시와 함께 보관된다.
+
+### 문항 분석
+**문항 분석** 메뉴에서 시험을 고르면 제출된 응시 전체로 문항 품질을 본다. 리허설 등은 "제외할 사번"(앞부분 일치, 쉼표 구분)으로 뺀다.
+- 객관식: 정답률, 변별도 r(문항 점수와 나머지 객관식 점수의 상관), 상하위 27% 정답률 차 D, 보기별 선택 수
+- 경고: 정답률 90% 이상·20% 이하, 변별도 0.2 미만, 음수 변별도(잘하는 사람이 더 틀림), 아무도 고르지 않은 오답 보기
+- 객관식 24문항 신뢰도 KR-20 (0.7 이상 양호), 자기평가 분포와 요인별 과대·과소평가, 서술형 기준별 확정·AI 평균과 일치율
+- 10명 미만이면 참고용 안내가 뜬다
 
 ### 재응시
 응시 중 오류 등으로 다시 봐야 하는 대상자는 시험의 **대상자** 화면에서 그 사람 줄의 **재응시**를 누른다.

@@ -1,4 +1,5 @@
 // 응시 흐름에서 쓰는 DB 행 모양과 저장소 인터페이스.
+import type { AnalysisAttempt } from "../analysis/items";
 import type { Survey } from "../survey/survey";
 
 export interface ExamRow {
@@ -221,6 +222,8 @@ export interface ReportStore {
   saveFeedback(attemptId: string, feedback: Feedback): Promise<void>;
   /** examId 가 있으면 그 시험만, 최근 순 */
   listSurveys(examId?: string): Promise<SurveyRow[]>;
+  /** 문항 분석용: 그 시험의 제출된 응시 전체 (응답, 서술형 확정·최근 AI 기준 점수, 결과) */
+  getAnalysisData(examId: string): Promise<AnalysisAttempt[]>;
 }
 
 // ── 시험·대상자·안내문 관리 (5단계) ─────────────────────

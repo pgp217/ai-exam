@@ -10,6 +10,7 @@ import type {
   FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate, RetakeRecord, SurveyRow,
 } from "./types";
 import type { Survey } from "../survey/survey";
+import type { AnalysisAttempt } from "../analysis/items";
 
 interface Candidate extends CandidateInfo {
   id: string;
@@ -319,6 +320,28 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
           return [{ ...clone(s), attemptId, candidate: info(c), exam: { id: exam.id, title: exam.title } }];
         })
         .sort((x, y) => y.created_at.localeCompare(x.created_at));
+    },
+
+    async getAnalysisData(examId) {
+      return db.attempts
+        .filter((a) => a.status !== "in_progress" && candidateOf(a).exam_id === examId)
+        .map((a): AnalysisAttempt => {
+          const responses = db.responses.get(a.id) ?? [];
+          const essays = Object.fromEntries(
+            responses
+              .filter((r) => ESSAY_ITEMS.some((e) => e.id === r.item_id))
+              .map((r) => {
+                const ai = db.aiGradings.filter((g) => g.response_id === r.id).sort((x, y) => y.created_at.localeCompare(x.created_at))[0];
+                const final = db.finals.find((f) => f.response_id === r.id);
+                return [r.item_id, { final: final ? clone(final.criterion_scores) : null, ai: ai ? clone(ai.criterion_scores) : null }];
+              }),
+          );
+          return {
+            attemptId: a.id, employee_no: candidateOf(a).employee_no,
+            responses: responses.map((r) => ({ item_id: r.item_id, answer: clone(r.answer) })),
+            essays, detail: clone((db.results.get(a.id)?.detail as AnalysisAttempt["detail"]) ?? null),
+          };
+        });
     },
 
     async listExamSummaries() {
