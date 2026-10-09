@@ -21,20 +21,20 @@ export default async function ExamsPage() {
         <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-zinc-50 text-left text-zinc-500 dark:bg-zinc-900">
-              <tr>{["시험명", "응시 기간", "D-day", "상태", "대상자", "응시", "제출", "채점 완료", ""].map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
+              <tr>{["시험명", "응시 기간", "D-day", "상태", "대상자", "응시", "제출", "채점 완료", ""].map((h) => <th key={h} className="whitespace-nowrap px-3 py-2 font-medium">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {exams.map((e) => (
                 <tr key={e.id}>
-                  <td className="px-3 py-2 font-medium">{e.title}</td>
+                  <td className="min-w-48 px-3 py-2 font-medium">{e.title}</td>
                   <td className="px-3 py-2 tabular-nums text-zinc-600">{fmt.format(new Date(e.starts_at))} ~ {fmt.format(new Date(e.ends_at))}</td>
-                  <td className="px-3 py-2">{dDay(e).label}</td>
-                  <td className="px-3 py-2"><span className={`rounded px-2 py-0.5 text-xs font-medium ${EXAM_STATUS_STYLES[e.status]}`}>{EXAM_STATUS_LABELS[e.status]}</span></td>
-                  <td className="px-3 py-2 tabular-nums">{e.candidates}명</td>
+                  <td className="whitespace-nowrap px-3 py-2">{dDay(e).label}</td>
+                  <td className="px-3 py-2"><span className={`whitespace-nowrap rounded px-2 py-0.5 text-xs font-medium ${EXAM_STATUS_STYLES[e.status]}`}>{EXAM_STATUS_LABELS[e.status]}</span></td>
+                  <td className="whitespace-nowrap px-3 py-2 tabular-nums">{e.candidates}명</td>
                   <td className="px-3 py-2 tabular-nums">{e.started}</td>
                   <td className="px-3 py-2 tabular-nums">{e.submitted}</td>
                   <td className="px-3 py-2 tabular-nums">{e.complete}</td>
-                  <td className="px-3 py-2 text-right"><Link href={`/admin/exams/${e.id}/basic`} className="rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">관리</Link></td>
+                  <td className="px-3 py-2 text-right"><Link href={`/admin/exams/${e.id}/basic`} className="inline-block whitespace-nowrap rounded border border-zinc-300 px-2 py-1 text-xs dark:border-zinc-700">관리</Link></td>
                 </tr>
               ))}
             </tbody>

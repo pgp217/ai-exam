@@ -25,6 +25,14 @@ describe.skipIf(!url || !key || !examId)("supabase store (integration)", () => {
 
     expect((await store.listExams()).some((e) => e.id === examId)).toBe(true);
 
+    // 문항 분석용 데이터: 제출된 응시마다 응답·결과가 함께 온다
+    const analysis = await store.getAnalysisData(examId!);
+    expect(analysis.length).toBeGreaterThanOrEqual(cohort.length);
+    const sim = analysis.find((x) => x.employee_no.startsWith("SIM-"))!;
+    expect(sim.responses.length).toBe(35);
+    expect(sim.detail).toMatchObject({ status: "complete" });
+    expect(Object.keys(sim.essays).sort()).toEqual(["E1", "E2", "E3"]);
+
     const attemptId = target.attempt!.id;
     const report = (await store.getReport(attemptId))!;
     expect(report.exam.id).toBe(examId);

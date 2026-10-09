@@ -7,6 +7,8 @@ import type {
   AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
   FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput, SurveyRow,
 } from "./types";
+import type { AnalysisAttempt } from "../analysis/items";
+import type { ExamResult } from "../exam/scoring";
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const ESSAY_FILTER = `in.(${ESSAY_ITEMS.map((e) => e.id).join(",")})`;
@@ -345,6 +347,30 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
         const { exam, ...c } = attempt.candidate;
         return { ...s, attemptId: attempt_id, candidate: { name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort }, exam };
       });
+    },
+
+    async getAnalysisData(examId) {
+      type Resp = ResponseRow & {
+        ai_gradings: { criterion_scores: Record<string, number>; created_at: string }[];
+        final_gradings: { criterion_scores: Record<string, number> } | { criterion_scores: Record<string, number> }[] | null;
+      };
+      type Row = { id: string; candidate: { employee_no: string }; result: { detail: ExamResult } | { detail: ExamResult }[] | null; responses: Resp[] };
+      const select = "id,candidate:candidates!inner(employee_no,exam_id),result:results(detail),responses(item_id,answer,response_ms,pasted,ai_gradings(criterion_scores,created_at),final_gradings(criterion_scores))";
+      const rows = await rest<Row[]>(`/attempts?status=neq.in_progress&select=${select}&candidate.exam_id=eq.${encodeURIComponent(examId)}&order=submitted_at.asc`);
+      return rows.map((r): AnalysisAttempt => ({
+        attemptId: r.id,
+        employee_no: r.candidate.employee_no,
+        responses: r.responses.map((x) => ({ item_id: x.item_id, answer: x.answer })),
+        essays: Object.fromEntries(
+          r.responses
+            .filter((x) => ESSAY_ITEMS.some((e) => e.id === x.item_id))
+            .map((x) => {
+              const ai = [...x.ai_gradings].sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+              return [x.item_id, { final: one(x.final_gradings)?.criterion_scores ?? null, ai: ai?.criterion_scores ?? null }];
+            }),
+        ),
+        detail: one(r.result)?.detail ?? null,
+      }));
     },
 
     // ── 시험·대상자·안내문 관리 ───────────────────────
