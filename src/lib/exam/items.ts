@@ -4,6 +4,7 @@
 
 import type { ChapterId, MidFactorId, SubFactorId } from "./factors";
 import { ITEMS_V1 } from "./items.v1";
+import { ITEMS_V2 } from "./items.v2";
 
 export const LIKERT_LABELS = ["전혀 그렇지 않다", "그렇지 않다", "보통이다", "그렇다", "매우 그렇다"];
 
@@ -50,10 +51,10 @@ function build(def: { version: string; choice: readonly ChoiceItem[]; self: read
   return { version: def.version, choice, self, essay, all: [...self, ...choice, ...essay] };
 }
 
-const SETS: Record<string, ItemSet> = Object.fromEntries([ITEMS_V1].map((d) => [d.version, build(d)]));
+const SETS: Record<string, ItemSet> = Object.fromEntries([ITEMS_V1, ITEMS_V2].map((d) => [d.version, build(d)]));
 
 /** 새로 만드는 시험에 쓰는 버전 */
-export const ITEM_SET_VERSION = ITEMS_V1.version;
+export const ITEM_SET_VERSION = ITEMS_V2.version;
 export const ITEM_SET_VERSIONS = Object.keys(SETS);
 
 /** 시험의 item_set_version 에 맞는 문항 세트. 모르는 버전이면 오류 */

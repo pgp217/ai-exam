@@ -3,6 +3,7 @@
 
 import { ITEM_SET_VERSION } from "./items";
 import { KEY_V1 } from "./answer-key.v1.data";
+import { KEY_V2 } from "./answer-key.v2.data";
 
 export interface RubricCriterion {
   key: string;
@@ -24,7 +25,7 @@ export interface ScoringKey {
 }
 
 const KEYS: Record<string, ScoringKey> = Object.fromEntries(
-  [KEY_V1].map((k) => [k.version, { version: k.version, answerKey: { ...k.answerKey }, rubrics: [...k.rubrics] }]),
+  [KEY_V1, KEY_V2].map((k) => [k.version, { version: k.version, answerKey: { ...k.answerKey }, rubrics: [...k.rubrics] }]),
 );
 
 /** 시험의 item_set_version 에 맞는 채점 키. 모르는 버전이면 오류 */
