@@ -6,7 +6,7 @@ import { ESSAY_ITEM_IDS, ITEM_SET_VERSION, itemSet, type ItemSet } from "../exam
 import { simulateCohort } from "../exam/simulate";
 import { mergeResponses, scoreSubmission } from "./responses";
 import type {
-  AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
+  AdminCandidate, AiGradingRow, AttemptRow, BiSourceRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
   FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportStore, ResponseRow, ResultRow, ResultUpdate, RetakeRecord, SurveyRow,
 } from "./types";
 import type { Survey } from "../survey/survey";
@@ -304,6 +304,20 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
             ? { status: r.status, total: r.total ?? null, grade: r.grade ?? null, aiType: r.ai_type ?? null, knowledge: r.knowledge_score, practice: r.practice_score ?? null, feedbackStatus: r.feedback?.status ?? null }
             : null,
         };
+      });
+    },
+
+    async getBiSource(examId) {
+      return db.attempts.flatMap((a): BiSourceRow[] => {
+        const r = db.results.get(a.id);
+        const c = candidateOf(a);
+        if (!r || r.status !== "complete" || (examId && c.exam_id !== examId)) return [];
+        const e = db.exams.find((x) => x.id === c.exam_id)!;
+        return [{
+          candidateId: c.id, employee_no: c.employee_no, department: c.department, cohort: c.cohort,
+          exam: { id: e.id, title: e.title, item_set_version: e.item_set_version },
+          submittedAt: a.submitted_at, durationSec: a.duration_sec, reliability: clone(db.reliability.get(a.id) ?? null), detail: clone(r.detail),
+        }];
       });
     },
 

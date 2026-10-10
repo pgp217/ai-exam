@@ -213,6 +213,19 @@ export interface ResultRow {
   result: { status: "grading" | "complete"; total: number | null; grade: string | null; aiType: string | null; knowledge: number; practice: number | null; feedbackStatus: Feedback["status"] | null } | null;
 }
 
+/** BI 내보내기용: 채점이 끝난 응시 1건 (results.detail 은 scoreAttempt() 결과) */
+export interface BiSourceRow {
+  candidateId: string;
+  employee_no: string;
+  department: string | null;
+  cohort: string | null;
+  exam: { id: string; title: string; item_set_version: string };
+  submittedAt: string | null;
+  durationSec: number | null;
+  reliability: unknown;
+  detail: unknown;
+}
+
 export interface ReportStore {
   getReport(attemptId: string): Promise<ReportData | null>;
   /** 같은 시험에서 결과가 확정된 응시자들 */
@@ -224,6 +237,8 @@ export interface ReportStore {
   listSurveys(examId?: string): Promise<SurveyRow[]>;
   /** 문항 분석용: 그 시험의 제출된 응시 전체 (응답, 서술형 확정·최근 AI 기준 점수, 결과) */
   getAnalysisData(examId: string): Promise<AnalysisAttempt[]>;
+  /** BI 내보내기용: 채점 완료된 응시 (examId 가 없으면 모든 시험) */
+  getBiSource(examId?: string): Promise<BiSourceRow[]>;
 }
 
 // ── 시험·대상자·안내문 관리 (5단계) ─────────────────────

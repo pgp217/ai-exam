@@ -4,6 +4,7 @@ import { RELIABILITY_STYLES } from "@/lib/admin/labels";
 import { getStore } from "@/lib/attempt/store";
 import { GRADE_BANDS } from "@/lib/exam/scoring";
 import { RELIABILITY_LABELS } from "@/lib/exam/reliability";
+import { BI_TABLES } from "@/lib/bi/export";
 import { STAGE_LABELS, distinct, filterResults, reliabilityOf, stageOf, summarize, type ResultFilters, type Stage } from "@/lib/report/filter";
 
 const STAGE_STYLES: Record<Stage, string> = {
@@ -47,6 +48,19 @@ export default async function ResultsPage({ searchParams }: PageProps<"/admin/re
         <Select name="grade" label="등급" value={f.grade} options={GRADE_BANDS.map((g) => [g.grade, g.grade])} />
         <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">적용</button>
         {filtered && <Link href="/admin/results" className="px-2 py-1.5 text-zinc-500 underline">초기화</Link>}
+      </form>
+
+      <form method="get" action="/admin/results/export" className="flex flex-wrap items-end gap-2 text-sm">
+        {f.exam && <input type="hidden" name="exam" value={f.exam} />}
+        <span className="mr-1 self-center text-xs text-zinc-500">
+          BI 내보내기 ({f.exam ? "선택한 시험" : "모든 시험"}, 채점 완료만 · 이름·사번 제외)
+        </span>
+        <input name="exclude" placeholder="제외할 사번 예: P-000, SIM-" className="w-52 rounded border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-950" />
+        {Object.entries(BI_TABLES).map(([k, t]) => (
+          <button key={k} type="submit" name="table" value={k} className="whitespace-nowrap rounded border border-zinc-300 px-2 py-1.5 hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
+            {t.label}.csv
+          </button>
+        ))}
       </form>
 
       <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

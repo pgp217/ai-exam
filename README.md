@@ -51,6 +51,7 @@
 | `supabase/migrations/0005_survey.sql` | 응시 후 설문(`attempt_surveys`), 시험별 설정 `exams.collect_survey`, 재응시 보관본에 설문 포함 |
 | `src/lib/survey/` · `src/app/admin/(console)/surveys` | 설문 문항·검증·집계, 관리자 설문 결과(문항별 평균·분포, 오류 신고, 자유 의견) |
 | `src/lib/analysis/` · `src/app/admin/(console)/analysis` | 문항 분석: 객관식 정답률·변별도(교정 점이연 상관, 상하위 27% 차)·보기 분포, KR-20 신뢰도, 자기평가 분포와 과대·과소평가, 서술형 기준별 평균과 AI 일치율 |
+| `src/lib/bi/` · `src/app/admin/(console)/results/export` · `scripts/bi-sample.mts` | BI 내보내기(응시자·역량 점수·역량 CSV, 이름·사번 없이 해시 ID), Power BI 연습용 가상 조직 데이터 `docs/bi/sample/` |
 | `src/lib/exam/items.v*.ts` · `answer-key.v*.data.ts` | 문항 세트 버전별 문항·정답·채점 기준표. 시험은 만들 때의 `item_set_version`(현재 v2)으로 채점·분석된다. v2 근거: `docs/item-set-v2.md` |
 | `docs/pilot.md` · `docs/pilot-result.md` | 소규모 파일럿 운영 계획과 1차 결과(10명)·v2 수정 후보 |
 | `supabase/migrations/0004_retake.sql` | 재응시: 이전 응시 보관(`attempt_archives`), 대상자별 재응시 마감(`candidates.retake_until`), `reset_attempt` · `clear_archive_scores` 함수 |
@@ -136,6 +137,14 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 - 경고: 정답률 90% 이상·20% 이하, 변별도 0.2 미만, 음수 변별도(잘하는 사람이 더 틀림), 아무도 고르지 않은 오답 보기
 - 객관식 24문항 신뢰도 KR-20 (0.7 이상 양호), 자기평가 분포와 요인별 과대·과소평가, 서술형 기준별 확정·AI 평균과 일치율
 - 10명 미만이면 참고용 안내가 뜬다
+
+### BI 내보내기 (Power BI)
+**결과 목록** 위쪽의 **BI 내보내기**에서 채점이 끝난 응시를 CSV 3개로 받는다. 시험 필터를 골라 두면 그 시험만 받는다.
+- **응시자:** 1인 1행이다. 부서, 기수, 총점, 등급, 유형, 상위요인 점수, 약점 2개가 들어간다.
+- **역량 점수:** 응시자 × 역량 8개다. 점수, 자기평가와 차이, 교육 대상(60점 미만) 여부가 들어간다.
+- **역량:** 역량별 상위요인과 교육 과정이다.
+- 이름·사번·연락처는 넣지 않고, 응시자ID는 해시로 만든다. 리허설·가상 응시자는 "제외할 사번"으로 뺀다.
+- 화면 설계와 DAX 측정값은 [`docs/bi-dashboard.md`](docs/bi-dashboard.md)에 있다. 연습용 가상 조직 데이터(5개 부서, 3개 기수, 202명)는 `docs/bi/sample/`에 있고, `npx tsx scripts/bi-sample.mts`로 다시 만든다.
 
 ### 재응시
 응시 중 오류 등으로 다시 봐야 하는 대상자는 시험의 **대상자** 화면에서 그 사람 줄의 **재응시**를 누른다.
