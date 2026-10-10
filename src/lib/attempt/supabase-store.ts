@@ -4,7 +4,7 @@ import "server-only";
 
 import { ESSAY_ITEM_IDS } from "../exam/items";
 import type {
-  AdminCandidate, AiGradingRow, AttemptRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
+  AdminCandidate, AiGradingRow, AttemptRow, BiSourceRow, CandidateInfo, CohortMember, ExamAdminStore, ExamRow, ExamStore, ExamSummary, Feedback,
   FinalGradingRow, GradingStore, NoticeTemplate, QueueRow, ReportData, ReportStore, ResponseRow, ResultRow, ReviewAttempt, Session, SubmitInput, SurveyRow,
 } from "./types";
 import type { AnalysisAttempt } from "../analysis/items";
@@ -319,6 +319,24 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
                 feedbackStatus: res.feedback?.status ?? null,
               }
             : null,
+        };
+      });
+    },
+
+    async getBiSource(examId) {
+      type Exam = { id: string; title: string; item_set_version: string };
+      type Cand = { id: string; employee_no: string; department: string | null; cohort: string | null; exam_id: string; exam: Exam | Exam[] };
+      type Att = { submitted_at: string | null; duration_sec: number | null; reliability: unknown; candidate: Cand | Cand[] };
+      type Row = { detail: unknown; attempt: Att | Att[] };
+      const select = "detail,attempt:attempts!inner(submitted_at,duration_sec,reliability,candidate:candidates!inner(id,employee_no,department,cohort,exam_id,exam:exams(id,title,item_set_version)))";
+      const filter = examId ? `&attempt.candidate.exam_id=eq.${encodeURIComponent(examId)}` : "";
+      const rows = await rest<Row[]>(`/results?status=eq.complete&select=${select}${filter}`);
+      return rows.map((r): BiSourceRow => {
+        const a = one(r.attempt)!;
+        const c = one(a.candidate)!;
+        return {
+          candidateId: c.id, employee_no: c.employee_no, department: c.department, cohort: c.cohort, exam: one(c.exam)!,
+          submittedAt: a.submitted_at, durationSec: a.duration_sec, reliability: a.reliability, detail: r.detail,
         };
       });
     },
