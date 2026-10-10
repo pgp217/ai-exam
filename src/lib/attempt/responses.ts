@@ -1,6 +1,6 @@
 // 응답 검증·병합과 제출 시 채점 (순수 함수). 정답 키는 호출하는 쪽(서버)에서 넘겨준다.
 
-import { ALL_ITEMS, LIKERT_LABELS, type Item } from "../exam/items";
+import { LIKERT_LABELS, type ItemSet } from "../exam/items";
 import { assessReliability, type ReliabilityResult } from "../exam/reliability";
 import { scoreAttempt, type ExamResult } from "../exam/scoring";
 import type { ResponseRow } from "./types";
@@ -8,18 +8,16 @@ import type { ResponseRow } from "./types";
 export const MAX_ESSAY_LENGTH = 4000;
 const MAX_RESPONSE_MS = 4 * 60 * 60 * 1000;
 
-const ITEM_BY_ID = new Map<string, Item>(ALL_ITEMS.map((i) => [i.id, i]));
-
 export class InvalidResponseError extends Error {}
 
 function fail(msg: string): never {
   throw new InvalidResponseError(msg);
 }
 
-/** 클라이언트가 보낸 응답 배열을 검증해 ResponseRow[] 로 바꾼다. 형식이 틀리면 InvalidResponseError. */
-export function parseResponses(input: unknown): ResponseRow[] {
+/** 클라이언트가 보낸 응답 배열을 시험의 문항 세트 기준으로 검증해 ResponseRow[] 로 바꾼다. 형식이 틀리면 InvalidResponseError. */
+export function parseResponses(input: unknown, set: ItemSet): ResponseRow[] {
   if (!Array.isArray(input)) fail("responses must be an array");
-  if (input.length > ALL_ITEMS.length) fail("too many responses");
+  if (input.length > set.all.length) fail("too many responses");
 
   const seen = new Set<string>();
   return input.map((raw): ResponseRow => {
@@ -28,7 +26,7 @@ export function parseResponses(input: unknown): ResponseRow[] {
 
     const itemId = r.item_id;
     if (typeof itemId !== "string") fail("item_id must be a string");
-    const item = ITEM_BY_ID.get(itemId) ?? fail(`unknown item ${itemId}`);
+    const item = set.all.find((i) => i.id === itemId) ?? fail(`unknown item ${itemId}`);
     if (seen.has(itemId)) fail(`duplicate item ${itemId}`);
     seen.add(itemId);
 
@@ -58,13 +56,13 @@ export function parseResponses(input: unknown): ResponseRow[] {
 }
 
 /** 저장된 응답 위에 새 응답을 덮어쓴다. 붙여넣기 기록은 한 번 생기면 유지한다. */
-export function mergeResponses(saved: ResponseRow[], incoming: ResponseRow[]): ResponseRow[] {
+export function mergeResponses(saved: ResponseRow[], incoming: ResponseRow[], set: ItemSet): ResponseRow[] {
   const byId = new Map(saved.map((r) => [r.item_id, r]));
   for (const r of incoming) {
     const prev = byId.get(r.item_id);
     byId.set(r.item_id, { ...r, pasted: r.pasted || (prev?.pasted ?? false) });
   }
-  return ALL_ITEMS.filter((i) => byId.has(i.id)).map((i) => byId.get(i.id)!);
+  return set.all.filter((i) => byId.has(i.id)).map((i) => byId.get(i.id)!);
 }
 
 export interface SubmissionScore {
@@ -79,6 +77,7 @@ export interface SubmissionScore {
  */
 export function scoreSubmission(
   responses: ResponseRow[],
+  set: ItemSet,
   answerKey: Record<string, number>,
   essayScores: Record<string, number | null> = {},
 ): SubmissionScore {
@@ -88,15 +87,16 @@ export function scoreSubmission(
   };
   const row = (id: string) => responses.find((r) => r.item_id === id);
 
-  const choiceIds = ALL_ITEMS.filter((i) => i.type === "choice").map((i) => i.id);
-  const selfIds = ALL_ITEMS.filter((i) => i.type === "self").map((i) => i.id);
-  const essayIds = ALL_ITEMS.filter((i) => i.type === "essay").map((i) => i.id);
+  const choiceIds = set.choice.map((i) => i.id);
+  const selfIds = set.self.map((i) => i.id);
+  const essayIds = set.essay.map((i) => i.id);
 
   const choice = Object.fromEntries(choiceIds.map((id) => [id, value(id)]));
   const self = Object.fromEntries(selfIds.map((id) => [id, value(id)]));
 
   const detail = scoreAttempt(
     { choice, self, essay: Object.fromEntries(essayIds.map((id) => [id, essayScores[id] ?? null])) },
+    set,
     answerKey,
   );
 
@@ -111,14 +111,14 @@ export function scoreSubmission(
       }),
     ),
     essayPasted: Object.fromEntries(essayIds.map((id) => [id, row(id)?.pasted ?? false])),
-  });
+  }, set);
 
   return { knowledge: detail.knowledge, detail, reliability };
 }
 
 /** 응답이 없는 서술형 문항에 빈 답안 행을 만든다 (빈 답안도 채점·확정 대상) */
-export function missingEssayRows(responses: Pick<ResponseRow, "item_id">[]): ResponseRow[] {
-  return ALL_ITEMS.filter((i) => i.type === "essay" && !responses.some((r) => r.item_id === i.id)).map((i) => ({
+export function missingEssayRows(responses: Pick<ResponseRow, "item_id">[], set: ItemSet): ResponseRow[] {
+  return set.essay.filter((i) => !responses.some((r) => r.item_id === i.id)).map((i) => ({
     item_id: i.id,
     answer: { text: "" },
     response_ms: null,

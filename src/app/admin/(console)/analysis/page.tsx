@@ -2,9 +2,9 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin/auth";
 import { FLAG_LABELS, MIN_RELIABLE_N, analyzeItems, type ItemFlag } from "@/lib/analysis/items";
 import { getStore } from "@/lib/attempt/store";
-import { ANSWER_KEY, RUBRICS } from "@/lib/exam/answer-key";
+import { scoringKey } from "@/lib/exam/answer-key";
 import { MID_FACTORS } from "@/lib/exam/factors";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "@/lib/exam/items";
+import { ITEM_SET_VERSION, itemSet } from "@/lib/exam/items";
 
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) || undefined;
 const pct = (x: number | null) => (x == null ? "—" : `${Math.round(x * 100)}%`);
@@ -27,15 +27,24 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/admin/a
   const examId = one(sp.exam) ?? exams[0]?.id;
   // 쉼표로 구분한 사번(앞부분 일치)을 분석에서 뺀다. 예: P-000 (리허설)
   const exclude = (one(sp.exclude) ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  const exam = examId ? await store.getExam(examId) : null;
+  // 시험마다 자기 문항 세트 버전으로 분석한다 (v1 결과는 v1 정답·기준표로)
+  const version = exam?.item_set_version ?? ITEM_SET_VERSION;
+  const set = itemSet(version);
+  const key = scoringKey(version);
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = set;
   const all = examId ? await store.getAnalysisData(examId) : [];
   const attempts = all.filter((a) => !exclude.some((e) => a.employee_no.startsWith(e)));
-  const r = analyzeItems(attempts, ANSWER_KEY, RUBRICS);
+  const r = analyzeItems(attempts, set, key.answerKey, key.rubrics);
   const flagged = r.choice.filter((c) => c.flags.length > 0);
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
-        <h1 className="mr-auto text-2xl font-bold">문항 분석</h1>
+        <div className="mr-auto">
+          <h1 className="text-2xl font-bold">문항 분석</h1>
+          <p className="text-xs text-zinc-500">문항 세트 {version}</p>
+        </div>
         <form method="get" className="flex flex-wrap items-end gap-2 text-sm">
           <label className="flex flex-col gap-1">
             <span className="text-xs text-zinc-500">시험</span>
@@ -107,7 +116,7 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/admin/a
                     <tr key={c.itemId} id={c.itemId} className="align-top">
                       <td className="px-3 py-2">
                         <p><strong>{c.itemId}</strong> <span className="text-xs text-zinc-500">{midName(c.mid)}</span></p>
-                        <p className="mt-0.5 text-zinc-600 dark:text-zinc-400">{item.prompt}</p>
+                        <p className="mt-0.5 whitespace-pre-line text-zinc-600 dark:text-zinc-400">{item.prompt}</p>
                         {c.flags.length > 0 && (
                           <p className="mt-1 flex flex-wrap gap-1">
                             {c.flags.map((f) => <span key={f} className={`whitespace-nowrap rounded px-1.5 py-0.5 text-xs ${FLAG_STYLES[f]}`}>{FLAG_LABELS[f]}</span>)}

@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ANSWER_KEY, RUBRICS } from "../../exam/answer-key.data";
 import { simulateCohort } from "../../exam/simulate";
 import { scoreSubmission } from "../../attempt/responses";
 import { createMemoryStore, demoDb } from "../../attempt/memory-store";
@@ -7,9 +6,19 @@ import type { CohortMember, ResultRow } from "../../attempt/types";
 import { binOf, cohortView, histogram, MIN_COHORT } from "../build";
 import { filterResults, stageOf, summarize } from "../filter";
 import { buildFeedbackPrompt, fakeFeedback, normalizeFeedback } from "../../feedback/feedback";
+import { itemSet } from "../../exam/items";
+import { rubricFor as rubricOf, scoringKey } from "../../exam/answer-key.data";
 
-const sims = simulateCohort(30, ANSWER_KEY, RUBRICS);
-const resultOf = (i: number) => scoreSubmission(sims[i].responses, ANSWER_KEY, sims[i].essayScores).detail;
+// 기존 테스트는 문항 세트 v1 기준으로 검증한다
+const SET = itemSet("NEWHIRE-AI-v1");
+const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = SET;
+const { answerKey: ANSWER_KEY, rubrics: RUBRICS } = scoringKey("NEWHIRE-AI-v1");
+const rubricFor = (id: string) => rubricOf(scoringKey("NEWHIRE-AI-v1"), id);
+void CHOICE_ITEMS; void SELF_ITEMS; void ESSAY_ITEMS; void RUBRICS; void rubricFor;
+
+
+const sims = simulateCohort(30, SET, ANSWER_KEY, RUBRICS);
+const resultOf = (i: number) => scoreSubmission(sims[i].responses, SET, ANSWER_KEY, sims[i].essayScores).detail;
 const member = (i: number): CohortMember => {
   const r = resultOf(i);
   return { attemptId: `a${i}`, total: r.total!, knowledge: r.knowledge, practice: r.practice!, tops: Object.fromEntries(r.tops.map((t) => [t.id, t.score!])) };
@@ -17,7 +26,7 @@ const member = (i: number): CohortMember => {
 
 describe("simulateCohort", () => {
   it("is deterministic and produces complete, varied results", () => {
-    expect(simulateCohort(5, ANSWER_KEY, RUBRICS)).toEqual(simulateCohort(5, ANSWER_KEY, RUBRICS));
+    expect(simulateCohort(5, SET, ANSWER_KEY, RUBRICS)).toEqual(simulateCohort(5, SET, ANSWER_KEY, RUBRICS));
     const totals = sims.map((_, i) => resultOf(i).total!);
     expect(totals.every((t) => t >= 0 && t <= 100)).toBe(true);
     expect(new Set(totals.map(binOf)).size).toBeGreaterThanOrEqual(4); // 분포가 한 구간에 몰리지 않는다
@@ -85,7 +94,7 @@ describe("results filters", () => {
 describe("feedback content", () => {
   it("builds a prompt from scores and rubric levels without personal data", () => {
     const r = resultOf(0);
-    const p = buildFeedbackPrompt(r, RUBRICS.map((rb) => ({ itemId: rb.itemId, criterionScores: sims[0].essayCriteria[rb.itemId], rubric: rb })));
+    const p = buildFeedbackPrompt(r, RUBRICS.map((rb) => ({ itemId: rb.itemId, title: ESSAY_ITEMS.find((e) => e.id === rb.itemId)!.title, criterionScores: sims[0].essayCriteria[rb.itemId], rubric: rb })));
     expect(p).toContain(`종합 ${r.total}점`);
     expect(p).toContain("<essays>");
     expect(p).not.toContain(sims[0].name);
@@ -95,7 +104,7 @@ describe("feedback content", () => {
   it("does not present level-1 rubric text as something the candidate did, and passes observed reasons", () => {
     const rb = RUBRICS.find((x) => x.itemId === "E2")!;
     const scores = { identify: 4, method: 3, logic: 1, decision: 1 };
-    const p = buildFeedbackPrompt(resultOf(0), [{ itemId: "E2", criterionScores: scores, rubric: rb, observed: { decision: "사용 판단이 답안에 없습니다." } }]);
+    const p = buildFeedbackPrompt(resultOf(0), [{ itemId: "E2", title: "결과 검증", criterionScores: scores, rubric: rb, observed: { decision: "사용 판단이 답안에 없습니다." } }]);
     const decision = rb.criteria.find((c) => c.key === "decision")!;
     expect(p).not.toContain(decision.levels[0]); // "그대로 사용하겠다고 했다"
     expect(p).toContain("최저 수준(다음 단계 미충족, 언급 없음 포함)");

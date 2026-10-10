@@ -1,10 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "../../exam/items";
-import { ANSWER_KEY } from "../../exam/answer-key.data";
 import { InvalidResponseError, mergeResponses, parseResponses, scoreSubmission } from "../responses";
 import { acceptsAnswers, attemptDeadline, durationSec, examWindow, GRACE_MS } from "../timing";
 import { createMemoryStore, demoDb } from "../memory-store";
 import type { AttemptRow, ExamRow, ResponseRow } from "../types";
+import { itemSet } from "../../exam/items";
+import { rubricFor as rubricOf, scoringKey } from "../../exam/answer-key.data";
+
+// 기존 테스트는 문항 세트 v1 기준으로 검증한다
+const SET = itemSet("NEWHIRE-AI-v1");
+const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = SET;
+const { answerKey: ANSWER_KEY, rubrics: RUBRICS } = scoringKey("NEWHIRE-AI-v1");
+const rubricFor = (id: string) => rubricOf(scoringKey("NEWHIRE-AI-v1"), id);
+void CHOICE_ITEMS; void SELF_ITEMS; void ESSAY_ITEMS; void RUBRICS; void rubricFor;
+
 
 const T0 = Date.parse("2026-10-06T00:00:00Z");
 
@@ -35,7 +43,7 @@ describe("parseResponses", () => {
       { item_id: "Q01", answer: { value: 2 }, response_ms: 1000 },
       { item_id: "P1", answer: { value: 5 }, response_ms: null, pasted: true },
       { item_id: "E1", answer: { text: "프롬프트" }, response_ms: 5, pasted: true },
-    ]);
+    ], SET);
     expect(rows).toEqual([
       { item_id: "Q01", answer: { value: 2 }, response_ms: 1000, pasted: false },
       { item_id: "P1", answer: { value: 5 }, response_ms: null, pasted: false }, // 붙여넣기는 서술형만
@@ -56,7 +64,7 @@ describe("parseResponses", () => {
     ["negative ms", [{ item_id: "Q01", answer: { value: 1 }, response_ms: -1 }]],
     ["missing answer", [{ item_id: "Q01" }]],
   ])("rejects %s", (_name, input) => {
-    expect(() => parseResponses(input)).toThrow(InvalidResponseError);
+    expect(() => parseResponses(input, SET)).toThrow(InvalidResponseError);
   });
 });
 
@@ -69,7 +77,7 @@ describe("mergeResponses", () => {
     const merged = mergeResponses(saved, [
       { item_id: "E1", answer: { text: "ab" }, response_ms: 20, pasted: false },
       { item_id: "Q01", answer: { value: 3 }, response_ms: 5, pasted: false },
-    ]);
+    ], SET);
     expect(merged.map((r) => r.item_id)).toEqual(["Q01", "Q02", "E1"]);
     expect(merged[2]).toEqual({ item_id: "E1", answer: { text: "ab" }, response_ms: 20, pasted: true });
   });
@@ -77,7 +85,7 @@ describe("mergeResponses", () => {
 
 describe("scoreSubmission", () => {
   it("scores choice items and leaves essays pending", () => {
-    const s = scoreSubmission(fullResponses({ correct: true }), ANSWER_KEY);
+    const s = scoreSubmission(fullResponses({ correct: true }), SET, ANSWER_KEY);
     expect(s.knowledge).toBe(100);
     expect(s.detail.status).toBe("grading");
     expect(s.detail.practice).toBeNull();
@@ -88,14 +96,14 @@ describe("scoreSubmission", () => {
 
   it("treats missing answers as wrong and flags reliability signals", () => {
     const rows = fullResponses({ correct: false, ms: 1200, essay: "짧음", pasted: true }).filter((r) => r.item_id !== "Q24");
-    const s = scoreSubmission(rows, ANSWER_KEY);
+    const s = scoreSubmission(rows, SET, ANSWER_KEY);
     expect(s.knowledge).toBe(0);
     expect(s.reliability.level).toBe("unreliable");
     expect(s.reliability.signals).toEqual(["too-fast", "essay-paste", "essay-short"]);
   });
 
   it("scores an empty submission without throwing", () => {
-    const s = scoreSubmission([], ANSWER_KEY);
+    const s = scoreSubmission([], SET, ANSWER_KEY);
     expect(s.knowledge).toBe(0);
     expect(s.reliability.signals).toContain("essay-short");
   });

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "@/lib/exam/items";
+import { itemSet } from "@/lib/exam/items";
 import { loadSession, type PublicExam } from "@/lib/attempt/service";
 import { loadReport } from "@/lib/report/service";
 import Report from "@/components/report/report";
@@ -33,6 +33,7 @@ export default async function TakeExamPage({ params }: PageProps<"/t/[token]">) 
         deadline={view.deadline}
         serverNow={view.now}
         initial={view.responses}
+        version={view.exam.item_set_version}
       />
     );
   }
@@ -100,14 +101,15 @@ function Notice({ children }: { children: React.ReactNode }) {
 }
 
 function Overview({ exam }: { exam: PublicExam }) {
+  const set = itemSet(exam.item_set_version);
   return (
     <section className="space-y-4">
       {exam.intro_text && <p className="whitespace-pre-line text-zinc-700 dark:text-zinc-300">{exam.intro_text}</p>}
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
         <Stat label="제한 시간" value={`${exam.time_limit_min}분`} />
-        <Stat label="자기평가" value={`${SELF_ITEMS.length}문항`} />
-        <Stat label="객관식" value={`${CHOICE_ITEMS.length}문항`} />
-        <Stat label="서술형" value={`${ESSAY_ITEMS.length}문항`} />
+        <Stat label="자기평가" value={`${set.self.length}문항`} />
+        <Stat label="객관식" value={`${set.choice.length}문항`} />
+        <Stat label="서술형" value={`${set.essay.length}문항`} />
       </dl>
       <ul className="list-disc space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-400">
         <li>시작하면 타이머가 바로 시작되고, 창을 닫아도 멈추지 않습니다. 같은 링크로 다시 들어오면 이어서 풀 수 있습니다.</li>

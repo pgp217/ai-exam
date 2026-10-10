@@ -51,7 +51,7 @@ export default function EssayReview({ index, attemptId, item, rubric, response, 
       <details className="rounded-lg bg-zinc-50 p-3 text-sm dark:bg-zinc-900">
         <summary className="cursor-pointer text-zinc-600 dark:text-zinc-400">상황과 질문 보기</summary>
         <p className="mt-2 whitespace-pre-line">{item.scenario}</p>
-        <p className="mt-2 font-medium">{item.prompt}</p>
+        <p className="mt-2 whitespace-pre-line font-medium">{item.prompt}</p>
       </details>
 
       <div>

@@ -1,6 +1,6 @@
 // 응답 신뢰도 판정 (에이치닷 "자기 응답 신뢰도"에 대응). 순수 함수.
 
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "./items";
+import type { ItemSet } from "./items";
 
 export const RELIABILITY_RULES = {
   minAvgChoiceMs: 5000, // 객관식 평균 응답 시간 하한
@@ -56,7 +56,8 @@ export function longestStraightRun(values: (number | null | undefined)[]): numbe
   return best;
 }
 
-export function assessReliability(input: ReliabilityInput): ReliabilityResult {
+export function assessReliability(input: ReliabilityInput, set: ItemSet): ReliabilityResult {
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = set;
   const signals: SignalId[] = [];
 
   const times = CHOICE_ITEMS.map((i) => input.choiceMs[i.id]).filter((t): t is number => t != null);

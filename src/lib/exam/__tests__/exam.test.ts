@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { CHAPTERS, MID_FACTORS, SUB_FACTORS } from "../factors";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "../items";
-import { ANSWER_KEY, RUBRICS, rubricFor } from "../answer-key.data";
 import {
   aiTypeOf, essayScoreFromCriteria, gradeOf, scoreAttempt, topPercent, type AttemptAnswers,
 } from "../scoring";
 import { assessReliability, longestStraightRun, type ReliabilityInput } from "../reliability";
+import { itemSet } from "../items";
+import { rubricFor as rubricOf, scoringKey } from "../answer-key.data";
+
+// 기존 테스트는 문항 세트 v1 기준으로 검증한다
+const SET = itemSet("NEWHIRE-AI-v1");
+const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = SET;
+const { answerKey: ANSWER_KEY, rubrics: RUBRICS } = scoringKey("NEWHIRE-AI-v1");
+const rubricFor = (id: string) => rubricOf(scoringKey("NEWHIRE-AI-v1"), id);
+void CHOICE_ITEMS; void SELF_ITEMS; void ESSAY_ITEMS; void RUBRICS; void rubricFor;
+
 
 function answers(opts: { correct: boolean | ((id: string) => boolean); self?: number; essay?: number | null }): AttemptAnswers {
   const isCorrect = typeof opts.correct === "function" ? opts.correct : () => opts.correct as boolean;
@@ -76,7 +84,7 @@ describe("grades and types", () => {
 
 describe("scoreAttempt", () => {
   it("gives 100 / A+ / AI 에이스 for a perfect attempt", () => {
-    const r = scoreAttempt(answers({ correct: true, self: 5, essay: 100 }), ANSWER_KEY);
+    const r = scoreAttempt(answers({ correct: true, self: 5, essay: 100 }), SET, ANSWER_KEY);
     expect(r.status).toBe("complete");
     expect(r.knowledge).toBe(100);
     expect(r.total).toBe(100);
@@ -89,7 +97,7 @@ describe("scoreAttempt", () => {
   it("stays in grading status until every essay is confirmed", () => {
     const a = answers({ correct: true, essay: 80 });
     a.essay.E2 = null;
-    const r = scoreAttempt(a, ANSWER_KEY);
+    const r = scoreAttempt(a, SET, ANSWER_KEY);
     expect(r.status).toBe("grading");
     expect(r.total).toBeNull();
     expect(r.grade).toBeNull();
@@ -101,7 +109,7 @@ describe("scoreAttempt", () => {
   it("weights top factors 40% choice and 60% essay", () => {
     const a = answers({ correct: true, essay: 50 });
     a.choice.Q07 = 1; // M3 wrong once → apply choice 8/9
-    const r = scoreAttempt(a, ANSWER_KEY);
+    const r = scoreAttempt(a, SET, ANSWER_KEY);
     expect(r.tops.find((t) => t.id === "apply")?.score).toBe(65.6); // 88.89*0.4 + 50*0.6
     expect(r.tops.find((t) => t.id === "responsible")?.score).toBe(70); // 100*0.4 + 50*0.6
     expect(r.total).toBe(78.5); // (100 + 65.6 + 70) / 3 = 78.53
@@ -113,7 +121,7 @@ describe("scoreAttempt", () => {
     const wrongInM6 = new Set(["Q16", "Q17", "Q18"]);
     const a = answers({ correct: (id) => !wrongInM6.has(id), self: 5, essay: 100 });
     a.essay.E2 = 0;
-    const r = scoreAttempt(a, ANSWER_KEY);
+    const r = scoreAttempt(a, SET, ANSWER_KEY);
     const m6 = r.mids.find((m) => m.id === "M6")!;
     expect(m6.score).toBe(0);
     expect(m6.gap).toBe(100);
@@ -126,7 +134,7 @@ describe("scoreAttempt", () => {
   it("treats unanswered choice items as wrong", () => {
     const a = answers({ correct: true });
     a.choice.Q01 = null;
-    const r = scoreAttempt(a, ANSWER_KEY);
+    const r = scoreAttempt(a, SET, ANSWER_KEY);
     expect(r.mids.find((m) => m.id === "M1")?.wrongItems).toEqual(["Q01"]);
   });
 });
@@ -155,20 +163,20 @@ describe("reliability", () => {
   });
 
   it("is reliable for a normal attempt", () => {
-    expect(assessReliability(base())).toEqual({ level: "reliable", signals: [] });
+    expect(assessReliability(base(), SET)).toEqual({ level: "reliable", signals: [] });
   });
 
   it("escalates with the number of signals", () => {
     const one = base();
     one.essayPasted.E1 = true;
-    expect(assessReliability(one)).toEqual({ level: "caution", signals: ["essay-paste"] });
+    expect(assessReliability(one, SET)).toEqual({ level: "caution", signals: ["essay-paste"] });
 
     const many = base();
     many.choice = Object.fromEntries(CHOICE_ITEMS.map((i) => [i.id, 1]));
     many.choiceMs = Object.fromEntries(CHOICE_ITEMS.map((i) => [i.id, 1500]));
     many.self = Object.fromEntries(SELF_ITEMS.map((i) => [i.id, 3]));
     many.essayText.E3 = "안 합니다";
-    const r = assessReliability(many);
+    const r = assessReliability(many, SET);
     expect(r.level).toBe("unreliable");
     expect(r.signals).toEqual(["too-fast", "straight-line", "flat-self", "essay-short"]);
   });

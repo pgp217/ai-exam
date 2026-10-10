@@ -4,7 +4,7 @@ import {
   CHAPTERS, MID_FACTORS, TOP_FACTORS,
   type ChapterId, type MidFactorId, type TopFactorId,
 } from "./factors";
-import { CHOICE_ITEMS, ESSAY_ITEMS, SELF_ITEMS } from "./items";
+import type { ItemSet } from "./items";
 import type { Rubric } from "./answer-key.data";
 
 // ── 등급 (8단계, 하한 포함) ─────────────────────────────
@@ -130,7 +130,8 @@ function mean(xs: number[]): number {
   return xs.reduce((s, x) => s + x, 0) / xs.length;
 }
 
-export function scoreAttempt(answers: AttemptAnswers, answerKey: Record<string, number>): ExamResult {
+export function scoreAttempt(answers: AttemptAnswers, set: ItemSet, answerKey: Record<string, number>): ExamResult {
+  const { choice: CHOICE_ITEMS, self: SELF_ITEMS, essay: ESSAY_ITEMS } = set;
   const correct = (id: string) => answers.choice[id] != null && answers.choice[id] === answerKey[id];
   const choiceRatio = (ids: string[]) => (ids.filter(correct).length / ids.length) * 100;
 

@@ -1,17 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CHOICE_ITEMS, ESSAY_ITEMS, LIKERT_LABELS, SELF_ITEMS, type Item } from "@/lib/exam/items";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LIKERT_LABELS, itemSet, type Item, type ItemSet } from "@/lib/exam/items";
 import type { Answer, ResponseRow } from "@/lib/attempt/types";
 
 // 자기평가를 먼저 받아 객관식 문항을 본 뒤의 인상이 자기평가에 섞이지 않게 한다
-const SECTIONS: { name: string; items: Item[] }[] = [
-  { name: "자기평가", items: SELF_ITEMS },
-  { name: "객관식", items: CHOICE_ITEMS },
-  { name: "서술형", items: ESSAY_ITEMS },
+const sectionsOf = (set: ItemSet): { name: string; items: Item[] }[] => [
+  { name: "자기평가", items: set.self },
+  { name: "객관식", items: set.choice },
+  { name: "서술형", items: set.essay },
 ];
-const ORDER: Item[] = SECTIONS.flatMap((s) => s.items);
 const SAVE_DEBOUNCE_MS = 1000;
 const SAVE_INTERVAL_MS = 15_000;
 
@@ -24,6 +23,8 @@ interface Props {
   deadline: number;
   serverNow: number;
   initial: ResponseRow[];
+  /** 시험의 문항 세트 버전 (item_set_version) */
+  version: string;
 }
 
 function isAnswered(a: Answer | undefined): boolean {
@@ -31,7 +32,9 @@ function isAnswered(a: Answer | undefined): boolean {
   return "value" in a ? true : a.text.trim().length > 0;
 }
 
-export default function ExamRunner({ token, title, candidateName, deadline, serverNow, initial }: Props) {
+export default function ExamRunner({ token, title, candidateName, deadline, serverNow, initial, version }: Props) {
+  const SECTIONS = useMemo(() => sectionsOf(itemSet(version)), [version]);
+  const ORDER = useMemo(() => itemSet(version).all, [version]);
   const router = useRouter();
   const api = `/api/t/${encodeURIComponent(token)}`;
 
@@ -63,7 +66,7 @@ export default function ExamRunner({ token, title, candidateName, deadline, serv
     msRef.current[id] = Math.round((msRef.current[id] ?? 0) + (now - at));
     enteredAtRef.current = now;
     if (answersRef.current[id]) dirtyRef.current.add(id);
-  }, []);
+  }, [ORDER]);
 
   const rowsFor = useCallback((ids: Iterable<string>): ResponseRow[] => {
     const rows: ResponseRow[] = [];
@@ -322,7 +325,7 @@ function ItemView({ item, answer, onAnswer, onPaste }: { item: Item; answer: Ans
       <div className="mt-2 space-y-4">
         <h2 className="text-xl font-bold">{item.title}</h2>
         <div className="whitespace-pre-line rounded-lg bg-zinc-50 p-4 text-zinc-800 dark:bg-zinc-900 dark:text-zinc-200">{item.scenario}</div>
-        <p className="font-medium">{item.prompt}</p>
+        <p className="whitespace-pre-line font-medium">{item.prompt}</p>
         <textarea
           value={text}
           onChange={(e) => onAnswer({ text: e.target.value })}
@@ -342,7 +345,7 @@ function ItemView({ item, answer, onAnswer, onPaste }: { item: Item; answer: Ans
   const options = item.type === "choice" ? item.options : LIKERT_LABELS;
   return (
     <fieldset className="mt-2">
-      <legend className="text-lg font-semibold leading-relaxed">{item.prompt}</legend>
+      <legend className="whitespace-pre-line text-lg font-semibold leading-relaxed">{item.prompt}</legend>
       <div className={`mt-4 ${item.type === "self" ? "grid gap-2 sm:grid-cols-5" : "space-y-2"}`}>
         {options.map((label, i) => {
           const v = i + 1;

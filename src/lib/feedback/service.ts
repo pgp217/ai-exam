@@ -2,8 +2,8 @@
 import "server-only";
 
 import { after } from "next/server";
-import { rubricFor } from "../exam/answer-key";
-import { ESSAY_ITEMS } from "../exam/items";
+import { rubricFor, scoringKey } from "../exam/answer-key";
+import { itemSet } from "../exam/items";
 import type { ExamResult } from "../exam/scoring";
 import { getStore } from "../attempt/store";
 import type { Feedback, FeedbackAction } from "../attempt/types";
@@ -31,7 +31,8 @@ export async function generateFeedback(attemptId: string, opts: { force?: boolea
     content = fakeFeedback(result);
     model = "fake-feedback";
   } else {
-    const essays = ESSAY_ITEMS.flatMap((e) => {
+    const version = review.exam.item_set_version;
+    const essays = itemSet(version).essay.flatMap((e) => {
       const resp = review.responses.find((r) => r.item_id === e.id);
       const final = review.finals.find((f) => f.response_id === resp?.id);
       if (!final) return [];
@@ -40,7 +41,7 @@ export async function generateFeedback(attemptId: string, opts: { force?: boolea
       const observed = ai
         ? Object.fromEntries(Object.entries(ai.reasons).filter(([k]) => ai.criterion_scores[k] === final.criterion_scores[k]))
         : undefined;
-      return [{ itemId: e.id, criterionScores: final.criterion_scores, rubric: rubricFor(e.id), observed }];
+      return [{ itemId: e.id, title: e.title, criterionScores: final.criterion_scores, rubric: rubricFor(scoringKey(version), e.id), observed }];
     });
     const res = await feedbackWithClaude(buildFeedbackPrompt(result, essays));
     content = normalizeFeedback(res.output);

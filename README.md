@@ -51,6 +51,7 @@
 | `supabase/migrations/0005_survey.sql` | 응시 후 설문(`attempt_surveys`), 시험별 설정 `exams.collect_survey`, 재응시 보관본에 설문 포함 |
 | `src/lib/survey/` · `src/app/admin/(console)/surveys` | 설문 문항·검증·집계, 관리자 설문 결과(문항별 평균·분포, 오류 신고, 자유 의견) |
 | `src/lib/analysis/` · `src/app/admin/(console)/analysis` | 문항 분석: 객관식 정답률·변별도(교정 점이연 상관, 상하위 27% 차)·보기 분포, KR-20 신뢰도, 자기평가 분포와 과대·과소평가, 서술형 기준별 평균과 AI 일치율 |
+| `src/lib/exam/items.v*.ts` · `answer-key.v*.data.ts` | 문항 세트 버전별 문항·정답·채점 기준표. 시험은 만들 때의 `item_set_version`(현재 v2)으로 채점·분석된다. v2 근거: `docs/item-set-v2.md` |
 | `docs/pilot.md` · `docs/pilot-result.md` | 소규모 파일럿 운영 계획과 1차 결과(10명)·v2 수정 후보 |
 | `supabase/migrations/0004_retake.sql` | 재응시: 이전 응시 보관(`attempt_archives`), 대상자별 재응시 마감(`candidates.retake_until`), `reset_attempt` · `clear_archive_scores` 함수 |
 | `supabase/seed/demo.sql` | 데모 시험 1개 + 응시자 3명 (응시 링크용 `access_token` 출력) |
@@ -156,7 +157,8 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 | `APP_URL` | 응시 링크·안내문에 쓸 주소 |
 
 ### 비용 (Claude API, 실측)
-- 서술형 1차 채점: 응시자 1명(3문항)당 약 $0.13 (`claude-opus-5-5`, 문항당 입력 약 2,000 · 출력 약 1,400~2,100 토큰 기준)
+- 서술형 1차 채점: 응시자 1명(3문항)당 약 $0.15 (실제 운영 7건 중앙값, $0.12~0.18). `claude-opus-5-5` ($4 / $20 per MTok), 문항당 입력 약 2,100 · 출력 약 1,900 토큰(중앙값, 22회 호출). `ai_gradings.raw.usage` 에 호출별 토큰이 남는다
+- 제출부터 3문항 AI 채점 완료까지: 중앙값 약 23초 (실제 7건, 20.5~29.2초)
 - 성장 피드백: 결과 확정 시 1회 + 다시 생성할 때마다 1회
 - Anthropic Console 에서 월 사용 한도를 정해 두는 것을 권장한다
 

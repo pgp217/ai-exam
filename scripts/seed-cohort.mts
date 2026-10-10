@@ -3,7 +3,8 @@
 //   npx tsx scripts/seed-cohort.mts --exam <exam_id> --remove
 // 환경 변수: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (또는 SUPABASE_SECRET_KEY)
 // 가상 응시자는 사번이 SIM- 으로 시작하고 이름에 "가상" 이 붙는다. 서술형은 확정 점수만 있고 답안·채점 기록은 없다.
-import { ANSWER_KEY, RUBRICS } from "../src/lib/exam/answer-key.data";
+import { scoringKey } from "../src/lib/exam/answer-key.data";
+import { itemSet } from "../src/lib/exam/items";
 import { simulateCohort } from "../src/lib/exam/simulate";
 import { scoreSubmission } from "../src/lib/attempt/responses";
 
@@ -37,15 +38,18 @@ if (args.includes("--remove")) {
   process.exit(0);
 }
 
-const [exam] = await rest<{ id: string; title: string }[]>(`/exams?id=eq.${examId}&select=id,title`);
+const [exam] = await rest<{ id: string; title: string; item_set_version: string }[]>(`/exams?id=eq.${examId}&select=id,title,item_set_version`);
 if (!exam) throw new Error("시험을 찾을 수 없습니다.");
+// 가상 응시자도 그 시험의 문항 세트 버전으로 만든다
+const set = itemSet(exam.item_set_version);
+const scoring = scoringKey(exam.item_set_version);
 const existing = await rest<unknown[]>(`/candidates?exam_id=eq.${examId}&employee_no=like.SIM-*&select=id`);
 if (existing.length > 0) {
   console.error(`이미 가상 응시자 ${existing.length}명이 있습니다. 먼저 --remove 로 지우세요.`);
   process.exit(1);
 }
 
-const sims = simulateCohort(count, ANSWER_KEY, RUBRICS);
+const sims = simulateCohort(count, set, scoring.answerKey, scoring.rubrics);
 const candidates = await rest<{ id: string; employee_no: string }[]>(
   "/candidates?select=id,employee_no",
   "POST",
@@ -55,7 +59,7 @@ const now = Date.now();
 for (const [i, s] of sims.entries()) {
   const candidateId = candidates.find((c) => c.employee_no === s.employee_no)!.id;
   const submitted = new Date(now - (count - i) * 3600_000);
-  const { detail, reliability } = scoreSubmission(s.responses, ANSWER_KEY, s.essayScores);
+  const { detail, reliability } = scoreSubmission(s.responses, set, scoring.answerKey, s.essayScores);
   const [attempt] = await rest<{ id: string }[]>("/attempts?select=id", "POST", {
     candidate_id: candidateId, status: "complete", duration_sec: s.durationSec, reliability,
     started_at: new Date(submitted.getTime() - s.durationSec * 1000).toISOString(), submitted_at: submitted.toISOString(),

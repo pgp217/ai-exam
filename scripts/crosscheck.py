@@ -30,24 +30,29 @@ TYPES = {("high","low"):"직관형 활용가",("high","mid"):"실전 성장가",
          ("mid","low"):"경험 학습가",("mid","mid"):"균형 성장형",("mid","high"):"지식 탄탄형",
          ("low","low"):"AI 입문자",("low","mid"):"기초 학습자",("low","high"):"이론 우선형"}
 
-key = cfg["answerKey"]; choice = cfg["choice"]; essays = cfg["essays"]; midTop = cfg["midTop"]
-rows = get("/attempts?status=neq.in_progress&select=id,status,candidate:candidates(name,employee_no,retakes:attempt_archives(id)),"
+midTop = cfg["midTop"]
+rows = get("/attempts?status=neq.in_progress&select=id,status,candidate:candidates(name,employee_no,retakes:attempt_archives(id),exam:exams(item_set_version)),"
            "result:results(status,knowledge_score,practice_score,total,grade,ai_type,detail),"
            "responses(id,item_id,answer,final_gradings(score,criterion_scores),ai_gradings(score,criterion_scores))")
 one = lambda v: v[0] if isinstance(v, list) and v else (v if not isinstance(v, list) else None)
 
-problems, checked, complete, sims_checked, retakes_skipped = [], 0, 0, [], []
+problems, checked, complete, sims_checked, retakes_skipped, versions_seen = [], 0, 0, [], [], {}
 for a in rows:
     if a["candidate"]["retakes"]:
         retakes_skipped.append(a["candidate"]["name"]); continue
     name = a["candidate"]["name"]; res = one(a["result"]); checked += 1
+    # 응시가 속한 시험의 문항 세트 버전 설정으로 검증한다
+    ver = a["candidate"]["exam"]["item_set_version"]
+    if ver not in cfg["versions"]: problems.append(f"{name}: 설정에 없는 문항 세트 {ver}"); continue
+    key = cfg["versions"][ver]["answerKey"]; choice = cfg["versions"][ver]["choice"]; essays = cfg["versions"][ver]["essays"]
+    versions_seen[ver] = versions_seen.get(ver, 0) + 1
     resp = {r["item_id"]: r for r in a["responses"]}
     if not res: problems.append(f"{name}: 결과 행 없음"); continue
     def ok(cond, msg):
         if not cond: problems.append(f"{name}: {msg}")
     correct = lambda ids: sum(1 for i in ids if i in resp and resp[i]["answer"].get("value") == key[i])
     all_ids = [c["id"] for c in choice]
-    knowledge = r1(correct(all_ids) / 24 * 100)
+    knowledge = r1(correct(all_ids) / len(all_ids) * 100)
     ok(abs(float(res["knowledge_score"]) - knowledge) < 1e-9, f"지식 {res['knowledge_score']} ≠ 재계산 {knowledge}")
 
     # 서술형: 확정 점수 = 기준 점수로 계산, AI 점수도 기준 점수와 일치
@@ -90,6 +95,7 @@ for a in rows:
     dt = {t["id"]: t["score"] for t in res["detail"]["tops"]}
     for t, v in tops.items(): ok(abs(float(dt[t]) - v) < 1e-9, f"상위요인 {t} {dt[t]} ≠ 재계산 {v}")
 
+print("문항 세트별:", ", ".join(f"{v} {n}건" for v, n in sorted(versions_seen.items())))
 print(f"점검한 응시 {checked}건 (채점 완료 {complete}건, 그중 가상 {len(sims_checked)}건은 결과 내부 서술형 점수로 검증)")
 if retakes_skipped: print(f"재응시 {len(retakes_skipped)}건은 점검에서 뺐습니다: {', '.join(retakes_skipped)}")
 print("불일치 없음" if not problems else f"불일치 {len(problems)}건:\n  " + "\n  ".join(problems))
