@@ -3,7 +3,7 @@
 // 이름·사번·연락처는 넣지 않는다. 응시자ID 는 대상자 id 의 해시라 표만으로는 누구인지 알 수 없다.
 
 import { createHash } from "node:crypto";
-import { CHAPTERS, MID_FACTORS, TOP_FACTORS } from "../exam/factors";
+import { MID_FACTORS, TOP_FACTORS } from "../exam/factors";
 import type { ExamResult } from "../exam/scoring";
 import { RELIABILITY_LABELS, type ReliabilityResult } from "../exam/reliability";
 import { csvCell } from "../exams/notice";
@@ -73,12 +73,11 @@ export function buildScores(rows: BiSourceRow[]): Table {
   return { columns, rows: out };
 }
 
-/** 역량 차원 표: 상위요인과 복습할 교재 장 (교육 과정 이름으로 쓴다) */
+/** 역량 차원 표: 역량 이름·상위요인·설명 */
 export function buildFactors(): Table {
-  const columns = ["역량코드", "역량", "상위요인", "설명", "교육과정"];
+  const columns = ["역량코드", "역량", "상위요인", "설명"];
   const out = MID_FACTORS.map((m) => [
     m.id, m.name, TOP_FACTORS.find((t) => t.id === m.top)!.name, m.desc,
-    m.chapters.map((c) => CHAPTERS[c].title).join(" / "),
   ]);
   return { columns, rows: out };
 }
