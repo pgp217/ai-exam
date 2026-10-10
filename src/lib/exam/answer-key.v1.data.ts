@@ -113,4 +113,5 @@ const RUBRICS: Rubric[] = [
   },
 ];
 
-export const KEY_V1 = { version: "NEWHIRE-AI-v1", answerKey: ANSWER_KEY, rubrics: RUBRICS } as const;
+// 채점 기록(ai_gradings.prompt_version)에 남는 값. 기준표 문구를 바꾸면 올린다.
+export const KEY_V1 = { version: "NEWHIRE-AI-v1", graderPromptVersion: "essay-grader-v1", answerKey: ANSWER_KEY, rubrics: RUBRICS } as const;

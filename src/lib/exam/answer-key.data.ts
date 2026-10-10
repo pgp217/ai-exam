@@ -20,12 +20,14 @@ export interface Rubric {
 /** 한 버전의 채점 키: 객관식 정답 번호(1부터)와 서술형 채점 기준표 */
 export interface ScoringKey {
   version: string;
+  /** 이 기준표로 채점한 기록에 남기는 프롬프트 버전 */
+  graderPromptVersion: string;
   answerKey: Record<string, number>;
   rubrics: Rubric[];
 }
 
 const KEYS: Record<string, ScoringKey> = Object.fromEntries(
-  [KEY_V1, KEY_V2].map((k) => [k.version, { version: k.version, answerKey: { ...k.answerKey }, rubrics: [...k.rubrics] }]),
+  [KEY_V1, KEY_V2].map((k) => [k.version, { version: k.version, graderPromptVersion: k.graderPromptVersion, answerKey: { ...k.answerKey }, rubrics: [...k.rubrics] }]),
 );
 
 /** 시험의 item_set_version 에 맞는 채점 키. 모르는 버전이면 오류 */

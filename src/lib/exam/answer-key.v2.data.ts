@@ -114,4 +114,5 @@ const RUBRICS: Rubric[] = [
   },
 ];
 
-export const KEY_V2 = { version: "NEWHIRE-AI-v2", answerKey: ANSWER_KEY, rubrics: RUBRICS } as const;
+// v2 는 기준표를 하위 질문별로 바꾸고 E1 elements 의 의미를 좁혔으므로 v1 채점과 구분한다.
+export const KEY_V2 = { version: "NEWHIRE-AI-v2", graderPromptVersion: "essay-grader-v2", answerKey: ANSWER_KEY, rubrics: RUBRICS } as const;

@@ -68,3 +68,9 @@ it("detects the v1 answer cycle that new versions must avoid", () => {
   const v1 = itemSet("NEWHIRE-AI-v1").choice.map((i) => scoringKey("NEWHIRE-AI-v1").answerKey[i.id]);
   expect(hasPeriod(v1, 4)).toBe(true);
 });
+
+it("records a distinct grader prompt version per item set, keeping v1's original value", () => {
+  const versions = ITEM_SET_VERSIONS.map((v) => scoringKey(v).graderPromptVersion);
+  expect(new Set(versions).size).toBe(versions.length);
+  expect(scoringKey("NEWHIRE-AI-v1").graderPromptVersion).toBe("essay-grader-v1");
+});

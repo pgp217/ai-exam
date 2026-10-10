@@ -13,13 +13,13 @@ import { onResultComplete } from "../feedback/service";
 import { GRADER_MODEL, gradeWithClaude } from "./claude";
 import { graderMode } from "./mode";
 import {
-  FAKE_MODEL, PROMPT_VERSION, differsFromAi, fakeGrade, gradeEmpty, normalizeOutput, parseCriterionScores,
+  FAKE_MODEL, differsFromAi, fakeGrade, gradeEmpty, normalizeOutput, parseCriterionScores,
 } from "./grade";
 
 const textOf = (r: ReviewAttempt["responses"][number] | undefined) => (r && "text" in r.answer ? r.answer.text : "");
 
-async function gradeOne(item: EssayItem, rubric: Rubric, responseId: string, answer: string): Promise<NewAiGrading> {
-  const base = { response_id: responseId, prompt_version: PROMPT_VERSION };
+async function gradeOne(item: EssayItem, rubric: Rubric, promptVersion: string, responseId: string, answer: string): Promise<NewAiGrading> {
+  const base = { response_id: responseId, prompt_version: promptVersion };
 
   if (answer.trim() === "") {
     const g = gradeEmpty(rubric);
@@ -71,7 +71,7 @@ export async function gradeAttemptEssays(attemptId: string, opts: { force?: bool
   const settled = await Promise.allSettled(
     targets.map(async (item) => {
       const resp = review!.responses.find((r) => r.item_id === item.id)!;
-      await store.insertAiGrading(await gradeOne(item, rubricFor(key, item.id), resp.id, textOf(resp)));
+      await store.insertAiGrading(await gradeOne(item, rubricFor(key, item.id), key.graderPromptVersion, resp.id, textOf(resp)));
       return item.id;
     }),
   );

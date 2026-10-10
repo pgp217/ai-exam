@@ -6,8 +6,6 @@ import type { Rubric } from "../exam/answer-key.data";
 import { essayScoreFromCriteria } from "../exam/scoring";
 import type { Evidence } from "../attempt/types";
 
-export const PROMPT_VERSION = "essay-grader-v1";
-
 // ── 프롬프트 ────────────────────────────────────────────
 // 응답자 이름·사번은 넣지 않는다 (개인정보는 AI에 보내지 않음).
 
