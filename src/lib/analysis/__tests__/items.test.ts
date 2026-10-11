@@ -17,11 +17,12 @@ const wrong = (id: string) => (ANSWER_KEY[id] % 4) + 1;
 const ids = CHOICE_ITEMS.map((i) => i.id);
 
 /** correct: 맞힌 객관식, blank: 비운 객관식, 나머지는 같은 오답 */
-function attempt(name: string, correct: string[], opts: { blank?: string[]; self?: number[]; complete?: boolean } = {}): AnalysisAttempt {
+function attempt(name: string, correct: string[], opts: { blank?: string[]; self?: number[]; complete?: boolean; essayText?: string } = {}): AnalysisAttempt {
   const responses: ResponseRow[] = ids
     .filter((id) => !opts.blank?.includes(id))
     .map((id) => ({ item_id: id, answer: { value: correct.includes(id) ? ANSWER_KEY[id] : wrong(id) }, response_ms: 10_000, pasted: false }));
   SELF_ITEMS.forEach((s, i) => responses.push({ item_id: s.id, answer: { value: opts.self?.[i] ?? 3 }, response_ms: 5_000, pasted: false }));
+  ESSAY_ITEMS.forEach((e) => responses.push({ item_id: e.id, answer: { text: opts.essayText ?? "답안 내용" }, response_ms: 60_000, pasted: false }));
   const essayScores: Record<string, number> = opts.complete ? { E1: 50, E2: 50, E3: 50 } : {};
   const { detail } = scoreSubmission(responses, SET, ANSWER_KEY, essayScores);
   return { attemptId: name, employee_no: name, responses, essays: {}, detail };
@@ -92,5 +93,17 @@ describe("analyzeItems", () => {
     expect(e1[0]).toMatchObject({ n: 2, mean: 2, aiMean: 2.5, agreement: 0.5, pairs: 2 });
     expect(e1[1]).toMatchObject({ mean: 3, agreement: 0.5 });
     expect(e1[3]).toMatchObject({ mean: 4, agreement: 1 });
+  });
+
+  it("counts unanswered essays separately and leaves them out of criterion stats", () => {
+    const keys = RUBRICS[0].criteria.map((c) => c.key);
+    const crit = (v: number) => Object.fromEntries(keys.map((k) => [k, v]));
+    const x = attempt("A", ids);
+    const blank = attempt("B", ids, { essayText: "  " });
+    x.essays.E1 = { final: crit(3), ai: crit(3) };
+    blank.essays.E1 = { final: crit(1), ai: crit(1) };
+    const e1 = analyzeItems([x, blank], SET, ANSWER_KEY, RUBRICS).essay.find((e) => e.itemId === "E1")!;
+    expect(e1.unanswered).toBe(1);
+    expect(e1.criteria[0]).toMatchObject({ n: 1, mean: 3, agreement: 1, pairs: 1 });
   });
 });

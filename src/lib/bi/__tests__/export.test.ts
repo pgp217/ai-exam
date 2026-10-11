@@ -51,7 +51,7 @@ describe("BI 내보내기", () => {
     expect(get(1, "부서")).toBe("미지정");
     expect(get(0, "응시일")).toBe("2026-10-10"); // KST 기준
     expect(get(0, "응시시간_분")).toBe(25.5);
-    expect(get(0, "응답신뢰도")).toBe("주의");
+    expect(get(0, "응답신뢰도")).toBe("추가 검토 필요");
     expect(get(0, "지식점수")).toBe(100);
   });
 

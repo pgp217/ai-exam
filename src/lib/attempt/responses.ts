@@ -111,7 +111,7 @@ export function scoreSubmission(
       }),
     ),
     essayPasted: Object.fromEntries(essayIds.map((id) => [id, row(id)?.pasted ?? false])),
-  }, set);
+  }, set, answerKey);
 
   return { knowledge: detail.knowledge, detail, reliability };
 }

@@ -14,4 +14,4 @@ export const STATUS_STYLES: Record<AttemptStatus, string> = {
   complete: "bg-emerald-50 text-emerald-700",
 };
 
-export const RELIABILITY_STYLES = { reliable: "text-emerald-700", caution: "text-amber-700", unreliable: "text-red-600" } as const;
+export const RELIABILITY_STYLES = { reliable: "text-emerald-700", caution: "text-amber-700", unreliable: "text-amber-700" } as const;

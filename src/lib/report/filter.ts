@@ -1,7 +1,7 @@
 // 관리자 결과 목록의 상태 구분과 필터 (순수 함수)
 
 import type { ResultRow } from "../attempt/types";
-import type { ReliabilityResult } from "../exam/reliability";
+import { normalizeLevel, type ReliabilityResult } from "../exam/reliability";
 
 export type Stage = "not_started" | "in_progress" | "ai_pending" | "review" | "complete";
 
@@ -39,7 +39,8 @@ export interface ResultFilters {
 }
 
 export function reliabilityOf(row: ResultRow): ReliabilityResult["level"] | null {
-  return (row.attempt?.reliability as ReliabilityResult | null)?.level ?? null;
+  const level = (row.attempt?.reliability as ReliabilityResult | null)?.level;
+  return level ? normalizeLevel(level) : null;
 }
 
 export function filterResults(rows: ResultRow[], f: ResultFilters): ResultRow[] {

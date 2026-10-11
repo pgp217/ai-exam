@@ -112,6 +112,14 @@ describe("feedback content", () => {
     expect(p).toContain("<observed>사용 판단이 답안에 없습니다.</observed>");
   });
 
+  it("marks unanswered essays without any rubric level text", () => {
+    const rb = RUBRICS.find((x) => x.itemId === "E3")!;
+    const ones = Object.fromEntries(rb.criteria.map((c) => [c.key, 1]));
+    const p = buildFeedbackPrompt(resultOf(0), [{ itemId: "E3", title: "윤리 판단", criterionScores: ones, rubric: rb, unanswered: true }]);
+    expect(p).toContain('<essay title="윤리 판단" status="미응답">답안을 작성하지 않음</essay>');
+    for (const c of rb.criteria) expect(p).not.toContain(c.levels[0]);
+  });
+
   it("normalizes actions and drops unknown chapters", () => {
     const n = normalizeFeedback({ summary: " 요약 ", actions: [{ title: "a", detail: "b", chapter: "ch09" }, { title: "c", detail: "d", chapter: "none" }, { title: " ", detail: "x", chapter: "ch01" }] });
     expect(n).toEqual({ summary: "요약", actions: [{ title: "a", detail: "b", chapter: "ch09" }, { title: "c", detail: "d", chapter: null }] });

@@ -2,7 +2,7 @@
 import { MID_FACTORS, type MidFactorId } from "../exam/factors";
 import type { ItemSet } from "../exam/items";
 import type { Rubric } from "../exam/answer-key.data";
-import type { ExamResult } from "../exam/scoring";
+import { isUnanswered, type ExamResult } from "../exam/scoring";
 import type { Answer } from "../attempt/types";
 
 /** 제출한 응시 1건 (응시 중은 넣지 않는다) */
@@ -75,7 +75,8 @@ export interface ItemAnalysis {
   kr20: number | null;
   choice: ChoiceStat[];
   self: SelfStat[];
-  essay: { itemId: string; criteria: CriterionStat[] }[];
+  /** unanswered: 답안을 쓰지 않은 응시 수. 기준별 통계에서는 뺀다 */
+  essay: { itemId: string; unanswered: number; criteria: CriterionStat[] }[];
 }
 
 const round = (x: number, d = 2) => Math.round(x * 10 ** d) / 10 ** d;
@@ -168,12 +169,20 @@ export function analyzeItems(attempts: AnalysisAttempt[], set: ItemSet, answerKe
 
   const essay = ESSAY_ITEMS.map((it) => {
     const rubric = rubrics.find((r) => r.itemId === it.id)!;
+    // 미응답은 0점이지만 답안 품질이나 AI 일치율 통계에 넣으면 왜곡되므로 따로 센다
+    const textOf = (a: AnalysisAttempt) => {
+      const ans = a.responses.find((r) => r.item_id === it.id)?.answer;
+      return ans && "text" in ans ? ans.text : null;
+    };
+    const unansweredCount = attempts.filter((a) => isUnanswered(textOf(a))).length;
+    const answered = attempts.filter((a) => !isUnanswered(textOf(a)));
     return {
       itemId: it.id,
+      unanswered: unansweredCount,
       criteria: rubric.criteria.map((c): CriterionStat => {
-        const finals = attempts.map((a) => a.essays[it.id]?.final?.[c.key]).filter((v): v is number => typeof v === "number");
-        const ais = attempts.map((a) => a.essays[it.id]?.ai?.[c.key]).filter((v): v is number => typeof v === "number");
-        const pairs = attempts.flatMap((a) => {
+        const finals = answered.map((a) => a.essays[it.id]?.final?.[c.key]).filter((v): v is number => typeof v === "number");
+        const ais = answered.map((a) => a.essays[it.id]?.ai?.[c.key]).filter((v): v is number => typeof v === "number");
+        const pairs = answered.flatMap((a) => {
           const e = a.essays[it.id];
           const f = e?.final?.[c.key];
           const ai = e?.ai?.[c.key];

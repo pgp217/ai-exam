@@ -3,7 +3,7 @@ import { CHAPTERS, MID_FACTORS, SUB_FACTORS } from "../factors";
 import {
   aiTypeOf, essayScoreFromCriteria, gradeOf, scoreAttempt, topPercent, type AttemptAnswers,
 } from "../scoring";
-import { assessReliability, longestStraightRun, type ReliabilityInput } from "../reliability";
+import { assessReliability, longestStraightRun, normalizeLevel, type ReliabilityInput } from "../reliability";
 import { itemSet } from "../items";
 import { rubricFor as rubricOf, scoringKey } from "../answer-key.data";
 
@@ -163,21 +163,38 @@ describe("reliability", () => {
   });
 
   it("is reliable for a normal attempt", () => {
-    expect(assessReliability(base(), SET)).toEqual({ level: "reliable", signals: [] });
+    expect(assessReliability(base(), SET, ANSWER_KEY)).toEqual({ level: "reliable", signals: [] });
   });
 
-  it("escalates with the number of signals", () => {
+  it("marks any signal as needing review instead of judging it unreliable", () => {
     const one = base();
     one.essayPasted.E1 = true;
-    expect(assessReliability(one, SET)).toEqual({ level: "caution", signals: ["essay-paste"] });
+    expect(assessReliability(one, SET, ANSWER_KEY)).toEqual({ level: "caution", signals: ["essay-paste"] });
 
     const many = base();
     many.choice = Object.fromEntries(CHOICE_ITEMS.map((i) => [i.id, 1]));
     many.choiceMs = Object.fromEntries(CHOICE_ITEMS.map((i) => [i.id, 1500]));
     many.self = Object.fromEntries(SELF_ITEMS.map((i) => [i.id, 3]));
     many.essayText.E3 = "안 합니다";
-    const r = assessReliability(many, SET);
-    expect(r.level).toBe("unreliable");
+    const r = assessReliability(many, SET, ANSWER_KEY);
+    expect(r.level).toBe("caution");
     expect(r.signals).toEqual(["too-fast", "straight-line", "flat-self", "essay-short"]);
+  });
+
+  it("does not flag fast answers that are mostly correct", () => {
+    const fast = base();
+    fast.choiceMs = Object.fromEntries(CHOICE_ITEMS.map((i) => [i.id, 2000]));
+    expect(assessReliability(fast, SET, ANSWER_KEY).signals).toEqual([]);
+  });
+
+  it("treats a blank essay as unanswered, not as a short answer", () => {
+    const blank = base();
+    blank.essayText = Object.fromEntries(ESSAY_ITEMS.map((e) => [e.id, "   "]));
+    expect(assessReliability(blank, SET, ANSWER_KEY).signals).toEqual([]);
+  });
+
+  it("reads legacy unreliable results as needing review", () => {
+    expect(normalizeLevel("unreliable")).toBe("caution");
+    expect(normalizeLevel("reliable")).toBe("reliable");
   });
 });

@@ -3,7 +3,7 @@ import { requireAdmin } from "@/lib/admin/auth";
 import { RELIABILITY_STYLES } from "@/lib/admin/labels";
 import { getStore } from "@/lib/attempt/store";
 import { GRADE_BANDS } from "@/lib/exam/scoring";
-import { RELIABILITY_LABELS } from "@/lib/exam/reliability";
+import { RELIABILITY_FILTER_OPTIONS, RELIABILITY_LABELS } from "@/lib/exam/reliability";
 import { BI_TABLES } from "@/lib/bi/export";
 import { STAGE_LABELS, distinct, filterResults, reliabilityOf, stageOf, summarize, type ResultFilters, type Stage } from "@/lib/report/filter";
 
@@ -44,7 +44,7 @@ export default async function ResultsPage({ searchParams }: PageProps<"/admin/re
         <Select name="dept" label="소속" value={f.dept} options={distinct(inExam, (r) => r.candidate.department).map((d) => [d, d])} />
         <Select name="cohort" label="기수" value={f.cohort} options={distinct(inExam, (r) => r.candidate.cohort).map((d) => [d, d])} />
         <Select name="stage" label="상태" value={f.stage} options={Object.entries(STAGE_LABELS)} />
-        <Select name="reliability" label="응답 신뢰도" value={f.reliability} options={Object.entries(RELIABILITY_LABELS)} />
+        <Select name="reliability" label="응답 신뢰도" value={f.reliability} options={RELIABILITY_FILTER_OPTIONS} />
         <Select name="grade" label="등급" value={f.grade} options={GRADE_BANDS.map((g) => [g.grade, g.grade])} />
         <button type="submit" className="rounded bg-zinc-900 px-3 py-1.5 font-medium text-white dark:bg-zinc-100 dark:text-zinc-900">적용</button>
         {filtered && <Link href="/admin/results" className="px-2 py-1.5 text-zinc-500 underline">초기화</Link>}

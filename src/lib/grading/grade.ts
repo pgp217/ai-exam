@@ -86,8 +86,8 @@ export function gradeEmpty(rubric: Rubric): GradedEssay {
   return {
     criterionScores,
     score: essayScoreFromCriteria(rubric, criterionScores),
-    reasons: Object.fromEntries(rubric.criteria.map((c) => [c.key, "답안이 없습니다."])),
-    rationale: "답안이 없어 모든 기준을 1점으로 처리했습니다.",
+    reasons: Object.fromEntries(rubric.criteria.map((c) => [c.key, "미응답"])),
+    rationale: "미응답: 답안을 작성하지 않아 0점으로 처리했습니다. 기준별 수준 설명은 적용하지 않습니다.",
     evidence: [],
   };
 }
