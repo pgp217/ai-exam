@@ -4,7 +4,7 @@ import "server-only";
 import { after } from "next/server";
 import { rubricFor, scoringKey } from "../exam/answer-key";
 import { itemSet } from "../exam/items";
-import type { ExamResult } from "../exam/scoring";
+import { isUnanswered, type ExamResult } from "../exam/scoring";
 import { getStore } from "../attempt/store";
 import type { Feedback, FeedbackAction } from "../attempt/types";
 import { graderMode } from "../grading/mode";
@@ -41,7 +41,8 @@ export async function generateFeedback(attemptId: string, opts: { force?: boolea
       const observed = ai
         ? Object.fromEntries(Object.entries(ai.reasons).filter(([k]) => ai.criterion_scores[k] === final.criterion_scores[k]))
         : undefined;
-      return [{ itemId: e.id, title: e.title, criterionScores: final.criterion_scores, rubric: rubricFor(scoringKey(version), e.id), observed }];
+      const unanswered = isUnanswered(resp && "text" in resp.answer ? resp.answer.text : null);
+      return [{ itemId: e.id, title: e.title, criterionScores: final.criterion_scores, rubric: rubricFor(scoringKey(version), e.id), observed, unanswered }];
     });
     const res = await feedbackWithClaude(buildFeedbackPrompt(result, essays));
     content = normalizeFeedback(res.output);

@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import type { Rubric } from "@/lib/exam/answer-key.data";
 import type { EssayItem } from "@/lib/exam/items";
-import { essayScoreFromCriteria } from "@/lib/exam/scoring";
+import { UNANSWERED_LABEL, essayScoreFromCriteria, isUnanswered } from "@/lib/exam/scoring";
 import type { AiGradingRow, Evidence, FinalGradingRow } from "@/lib/attempt/types";
 import { confirmGradingAction, type FormState } from "../../../actions";
 import RunAiButton from "./run-ai-button";
@@ -26,7 +26,13 @@ interface Props {
 
 export default function EssayReview({ index, attemptId, item, rubric, response, ai, aiCount, aiIsFake, final, canRunAi }: Props) {
   const [state, action, pending] = useActionState(confirmGradingAction, initial);
-  const [scores, setScores] = useState<Record<string, number>>(() => ({ ...(final?.criterion_scores ?? ai?.criterion_scores ?? {}) }));
+  // 미응답은 기준별 수준을 고르지 않고 모든 기준 최저(0점)로 확정한다
+  const unanswered = isUnanswered(response?.text);
+  const [scores, setScores] = useState<Record<string, number>>(() =>
+    unanswered
+      ? Object.fromEntries(rubric.criteria.map((c) => [c.key, 1]))
+      : { ...(final?.criterion_scores ?? ai?.criterion_scores ?? {}) },
+  );
   const [reason, setReason] = useState(final?.override_reason ?? "");
 
   const complete = rubric.criteria.every((c) => scores[c.key] >= 1);
@@ -41,6 +47,7 @@ export default function EssayReview({ index, attemptId, item, rubric, response, 
         <h2 id={`essay-${item.id}`} className="text-lg font-bold">
           서술형 {index}. {item.title}
         </h2>
+        {unanswered && <span className="rounded bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">{UNANSWERED_LABEL}</span>}
         {final ? (
           <span className="rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">확정 {final.score}점 · {fmt.format(new Date(final.confirmed_at))}</span>
         ) : (
@@ -62,7 +69,7 @@ export default function EssayReview({ index, attemptId, item, rubric, response, 
           {verifiedQuotes.length > 0 && <span>· <mark className="bg-yellow-100 px-1 dark:bg-yellow-900">표시</mark>는 AI가 근거로 인용한 부분</span>}
         </div>
         <div className="whitespace-pre-wrap rounded-lg border border-zinc-200 p-3 leading-relaxed dark:border-zinc-800">
-          {text.trim() ? <Highlighted text={text} quotes={verifiedQuotes} /> : <span className="text-zinc-400">(답안 없음)</span>}
+          {text.trim() ? <Highlighted text={text} quotes={verifiedQuotes} /> : <span className="text-zinc-400">(답안을 작성하지 않음)</span>}
         </div>
       </div>
 
@@ -89,7 +96,13 @@ export default function EssayReview({ index, attemptId, item, rubric, response, 
         <input type="hidden" name="attemptId" value={attemptId} />
         <input type="hidden" name="itemId" value={item.id} />
 
-        {rubric.criteria.map((c) => {
+        {unanswered ? (
+          <div className="rounded-lg border border-dashed border-zinc-300 p-3 text-sm text-zinc-600 dark:border-zinc-700 dark:text-zinc-400">
+            <p className="font-medium text-zinc-800 dark:text-zinc-200">{UNANSWERED_LABEL}: 답안을 작성하지 않아 0점으로 확정합니다.</p>
+            <p className="mt-1">답안 내용이 없으므로 기준별 수준 설명은 적용하지 않습니다. 성장 피드백과 문항 분석에서도 미응답으로 따로 다룹니다.</p>
+            {rubric.criteria.map((c) => <input key={c.key} type="hidden" name={`score:${c.key}`} value={1} />)}
+          </div>
+        ) : rubric.criteria.map((c) => {
           const aiScore = ai?.criterion_scores[c.key];
           const evidence = (ai?.evidence ?? []).filter((e) => e.criterion === c.key);
           return (

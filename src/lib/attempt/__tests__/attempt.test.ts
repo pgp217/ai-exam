@@ -98,14 +98,15 @@ describe("scoreSubmission", () => {
     const rows = fullResponses({ correct: false, ms: 1200, essay: "짧음", pasted: true }).filter((r) => r.item_id !== "Q24");
     const s = scoreSubmission(rows, SET, ANSWER_KEY);
     expect(s.knowledge).toBe(0);
-    expect(s.reliability.level).toBe("unreliable");
+    expect(s.reliability.level).toBe("caution");
     expect(s.reliability.signals).toEqual(["too-fast", "essay-paste", "essay-short"]);
   });
 
   it("scores an empty submission without throwing", () => {
     const s = scoreSubmission([], SET, ANSWER_KEY);
     expect(s.knowledge).toBe(0);
-    expect(s.reliability.signals).toContain("essay-short");
+    // 빈 서술형은 분량 부족 신호가 아니라 미응답으로 따로 다룬다
+    expect(s.reliability.signals).not.toContain("essay-short");
   });
 });
 

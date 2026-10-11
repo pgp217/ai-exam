@@ -6,7 +6,7 @@ import type { Rubric } from "../exam/answer-key.data";
 import type { ExamResult } from "../exam/scoring";
 import type { FeedbackAction } from "../attempt/types";
 
-export const FEEDBACK_PROMPT_VERSION = "feedback-v2";
+export const FEEDBACK_PROMPT_VERSION = "feedback-v3";
 export const ACTION_COUNT = 3;
 
 export const FEEDBACK_SYSTEM = `당신은 신입사원의 AI 활용 역량 시험 결과를 바탕으로 성장 조언을 쓰는 코치입니다. 쓴 내용은 담당자가 확인한 뒤 신입사원 본인에게 공개됩니다.
@@ -19,14 +19,15 @@ export const FEEDBACK_SYSTEM = `당신은 신입사원의 AI 활용 역량 시�
 - chapter 는 주어진 복습 교재 장 목록에서 고르고, 맞는 장이 없으면 "none" 으로 둡니다.
 - 점수 숫자를 그대로 나열하지 말고, 의미를 풀어 씁니다.
 - 응시자가 실제로 무엇을 썼는지는 <observed> 에 있는 채점 근거로만 판단합니다. 기준표의 수준 설명과 예시 문구("보기 좋게", "조금 위험할 수 있다" 등)는 수준을 설명하는 말일 뿐 응시자가 쓴 말이 아니므로, 응시자의 말처럼 따옴표로 인용하거나 "~했다"고 단정하지 않습니다.
-- 1점은 다음 단계 조건을 충족하지 못했다는 뜻이며, 해당 내용을 아예 쓰지 않은 경우도 포함합니다. 1점 칸의 설명대로 행동했다고 쓰지 말고, 근거가 없으면 "~이 드러나지 않았다"처럼 씁니다.`;
+- 1점은 다음 단계 조건을 충족하지 못했다는 뜻이며, 해당 내용을 아예 쓰지 않은 경우도 포함합니다. 1점 칸의 설명대로 행동했다고 쓰지 말고, 근거가 없으면 "~이 드러나지 않았다"처럼 씁니다.
+- status="미응답" 인 서술형은 응시자가 답안을 쓰지 않은 문항입니다. 답안 내용을 평가하거나 기준별 수준을 언급하지 말고, 필요하면 "이 문항은 작성하지 않았다"는 사실과 다음에 시도해 볼 방법만 씁니다.`;
 
 const levelText = (rubric: Rubric, key: string, score: number) => rubric.criteria.find((c) => c.key === key)?.levels[score - 1] ?? "";
 
 export function buildFeedbackPrompt(
   result: ExamResult,
   // observed: 담당자가 확정한 점수와 같은 기준에 한해, AI 채점이 답안을 보고 쓴 판단 이유
-  essays: { itemId: string; title: string; criterionScores: Record<string, number>; rubric: Rubric; observed?: Record<string, string> }[],
+  essays: { itemId: string; title: string; criterionScores: Record<string, number>; rubric: Rubric; observed?: Record<string, string>; unanswered?: boolean }[],
 ): string {
   const lines: string[] = [];
   lines.push(`<overall>종합 ${result.total}점(${result.grade}), 지식 ${result.knowledge}점, 실전 ${result.practice}점, 유형: ${result.aiType?.name} — ${result.aiType?.desc}</overall>`);
@@ -38,6 +39,10 @@ export function buildFeedbackPrompt(
   lines.push("</factors>");
   lines.push("<essays>");
   for (const e of essays) {
+    if (e.unanswered) {
+      lines.push(`<essay title="${e.title}" status="미응답">답안을 작성하지 않음</essay>`);
+      continue;
+    }
     lines.push(`<essay title="${e.title}">`);
     for (const c of e.rubric.criteria) {
       const s = e.criterionScores[c.key];

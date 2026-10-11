@@ -23,7 +23,7 @@
 | `src/lib/exam/items.ts` | 공개 문항 (정답 없음, 응시 화면에서도 사용) |
 | `src/lib/exam/answer-key.ts` | 정답 키·채점 기준표 (`server-only`, 클라이언트에서 import 하면 빌드 실패) |
 | `src/lib/exam/scoring.ts` | 8단계 등급, 3×3 유형, 요인 점수, 자기평가 차이, 강점·약점, 복습할 장, 동기 내 상위 % |
-| `src/lib/exam/reliability.ts` | 응답 신뢰도 (응답 시간, 일렬 응답, 자기평가 무변별, 붙여넣기, 분량) |
+| `src/lib/exam/reliability.ts` | 응답 신뢰도 신호 (빠른 응답+낮은 정답률, 일렬 응답, 자기평가 무변별, 붙여넣기, 짧은 답안). 신호가 있으면 "추가 검토 필요" |
 | `src/lib/attempt/responses.ts` | 응답 검증·병합, 제출 시 객관식 채점과 응답 신뢰도 판정 |
 | `src/lib/attempt/timing.ts` | 응시 기간, 제한 시간 마감(+60초 여유), 응시 시간 계산 |
 | `src/lib/attempt/service.ts` | 응시 흐름(서버 전용): 링크 확인 → 시작 → 임시 저장 → 제출, 저장소 선택 |

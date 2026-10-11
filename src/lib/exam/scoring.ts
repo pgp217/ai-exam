@@ -73,6 +73,12 @@ export function essayScoreFromCriteria(rubric: Rubric, scores: Record<string, nu
 }
 
 // ── 종합 채점 ───────────────────────────────────────────
+/** 서술형 미응답: 공백만 있거나 비어 있는 답안. 0점으로 처리하되 기준별 수준 설명은 붙이지 않는다 */
+export const UNANSWERED_LABEL = "미응답";
+export function isUnanswered(text: string | null | undefined): boolean {
+  return (text ?? "").trim().length === 0;
+}
+
 export const WEIGHTS = { choice: 0.4, essay: 0.6 };
 export const GAP_THRESHOLD = 30;
 export const REVIEW_BELOW = 60;

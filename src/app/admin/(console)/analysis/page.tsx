@@ -187,6 +187,7 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/admin/a
               {r.essay.map((e) => (
                 <div key={e.itemId} className="min-w-0 rounded-xl border border-zinc-200 p-3 dark:border-zinc-800">
                   <p className="text-sm font-semibold">{e.itemId} {ESSAY_ITEMS.find((i) => i.id === e.itemId)!.title}</p>
+                  {e.unanswered > 0 && <p className="text-xs text-zinc-500">미응답 {e.unanswered}명은 아래 통계에서 뺐습니다</p>}
                   <table className="mt-2 w-full text-sm">
                     <thead className="text-left text-xs text-zinc-500">
                       <tr><th className="py-1 font-medium">기준</th><th className="py-1 text-right font-medium">확정</th><th className="py-1 text-right font-medium">AI</th><th className="py-1 text-right font-medium">일치</th></tr>
@@ -206,7 +207,7 @@ export default async function AnalysisPage({ searchParams }: PageProps<"/admin/a
               ))}
             </div>
             <p className="text-xs text-zinc-500">
-              일치: AI 기준 점수와 담당자 확정 점수가 같은 비율입니다(둘 다 있는 응답만). 60% 미만이면 채점 기준표 문구가 모호하거나 AI 가 그 기준을 다르게 해석하는지 살펴보세요. 확정 기록이 없는 응시는 서술형 표에 들어가지 않습니다.
+              일치: AI 기준 점수와 담당자 확정 점수가 같은 비율입니다(둘 다 있는 응답만, 미응답 제외). 60% 미만이면 채점 기준표 문구가 모호하거나 AI 가 그 기준을 다르게 해석하는지 살펴보세요. 확정 기록이 없는 응시는 서술형 표에 들어가지 않습니다.
             </p>
           </section>
 
