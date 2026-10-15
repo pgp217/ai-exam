@@ -196,8 +196,8 @@ code { font-family: var(--f-mono); font-size: 0.88em; background: var(--bg); pad
     { id: "s7", title: "서술형 확정", role: "grader", review: true, hold: "h7",
       input: ["답안 원문, AI 초안과 인용, 신뢰도 신호", "미응답 문항은 0점 확정 안내"],
       task: ["기준별 점수를 고르고 확정", "AI와 다른 점수면 사유 작성"],
-      output: ["확정 점수, 3문항 모두 확정 시 결과 '채점 완료' (총점, 등급, 유형)"],
-      next: "Claude · 성장 피드백 초안" },
+      output: ["확정 점수, 3문항 모두 확정 시 결과 '채점 완료' (총점, 등급, 유형)", "채점 완료 결과가 결과 목록·문항 분석·BI 내보내기에 들어감 (대상자의 소속·기수 포함)"],
+      next: "Claude · 성장 피드백 초안 / 교육 담당자 · 분석·교육 결정 (채점 완료 결과)" },
     { id: "s8", title: "성장 피드백 초안", role: "ai", hold: "h8",
       input: ["확정 점수, 기준별 수준, 자기평가 차이 (이름·사번 제외)", "미응답 문항은 '미응답'으로만 전달"],
       task: ["요약 2~3문장과 다음 업무에서 해 볼 행동 3개 작성"],
@@ -212,9 +212,9 @@ code { font-family: var(--f-mono); font-size: 0.88em; background: var(--bg); pad
       input: ["같은 응시 링크"],
       task: ["등급, 유형, 동기 분포, 자기평가 vs 실제, 피드백, 복습할 장 확인", "응시 후 설문 (켜 둔 시험만)"],
       output: ["설문 응답 (난이도·시간·이해도·관련성·편의, 오류 신고, 자유 의견)"],
-      next: "교육 담당자 · 분석·교육 결정" },
+      next: "교육 담당자 · 분석·교육 결정 (설문 응답만, 선택)" },
     { id: "s11", title: "분석·교육 결정", role: "admin", review: true, hold: "h11",
-      input: ["결과 목록, 문항 분석, 설문 결과", "BI 내보내기 CSV 3개 (응시자, 역량 점수, 역량 · 해시 ID)"],
+      input: ["결과 목록, 문항 분석 ← 7. 서술형 확정의 채점 완료 결과", "BI 내보내기 CSV 3개 (응시자, 역량 점수, 역량 · 해시 ID) ← 같은 채점 완료 결과", "설문 결과 ← 10. 리포트 확인·설문 (설문을 켠 시험만)"],
       task: ["문항 개선 후보 정리", "Power BI로 부서 × 역량 히트맵, 교육 우선순위 확인"],
       output: ["부서별 교육 우선순위, 다음 문항 세트 수정안"],
       next: "교육 담당자 · 다음 시험 만들기 (1단계로)" },
@@ -285,6 +285,14 @@ code { font-family: var(--f-mono); font-size: 0.88em; background: var(--bg); pad
   STEPS.slice(0, -1).forEach((s, i) => {
     el("path", { d: `M${MX} ${cy(i) + SH / 2}V${cy(i + 1) - SH / 2 - 2}`, class: "edge", "marker-end": "url(#a-main)" }, edges);
   });
+  // 7 → 11 인계: 교육 결정 자료(채점 완료 결과)는 응시자의 리포트 확인을 거치지 않고 바로 넘어간다
+  {
+    const a = pos.s7.cy, b = pos.s11.cy, lane = 12;
+    el("path", { d: `M${SX} ${a}H${lane}V${b}H${SX - 2}`, class: "edge", "marker-end": "url(#a-main)" }, edges);
+    const ly = (pos.s8.cy + pos.s10.cy) / 2; // 통로를 따라 세로로 써서 10→11 라벨과 겹치지 않게 한다
+    txt(edges, 30, ly, "t-edge", "7단계 채점 완료 결과 → 결과 목록·BI CSV", "middle").setAttribute("transform", `rotate(-90 30 ${ly})`);
+    txt(edges, MX + 10, pos.s10.cy + SH / 2 + 22, "t-edge", "설문 응답(선택)");
+  }
   // 보류 경로
   HOLDS.forEach(h => {
     const p = pos[h.from];
@@ -398,7 +406,7 @@ code { font-family: var(--f-mono); font-size: 0.88em; background: var(--bg); pad
   current = start; nodes[start].classList.add("selected"); render(start);
 
   // ── 설계 설명용 애니메이션: 정상 흐름을 따라 점이 이동하고, 보류가 있는 단계에서는 보류 화살표가 움직인다 ──
-  const token = el("circle", { class: "token", r: 7, cx: SX - 18, cy: cy(0), opacity: 0, "aria-hidden": "true" });
+  const token = el("circle", { class: "token", r: 7, cx: SX - 14, cy: cy(0), opacity: 0, "aria-hidden": "true" });
   const caption = document.getElementById("caption");
   const playBtn = document.getElementById("play");
   let playing = false, timer = null, idx = 0;
