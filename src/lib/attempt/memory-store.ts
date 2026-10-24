@@ -134,6 +134,8 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
   return {
     db,
 
+    async ping() {},
+
     async findSession(token) {
       const c = db.candidates.find((x) => x.access_token === token);
       if (!c) return null;

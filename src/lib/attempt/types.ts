@@ -54,6 +54,8 @@ export interface SubmitInput {
 }
 
 export interface ExamStore {
+  /** DB 에 가벼운 조회를 한 번 한다 (무료 플랜 비활성 일시정지 방지용 상태 확인) */
+  ping(): Promise<void>;
   findSession(token: string): Promise<Session | null>;
   /** 이미 시작했으면 아무것도 하지 않는다 (1인 1회 응시) */
   startAttempt(candidateId: string): Promise<void>;

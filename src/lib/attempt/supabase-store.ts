@@ -73,6 +73,10 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
   const CANDIDATE_INFO = "name,employee_no,department,cohort";
 
   return {
+    async ping() {
+      await rest("/exams?select=id&limit=1");
+    },
+
     // ── 응시 ─────────────────────────────────────────
     async findSession(token) {
       const select = [
