@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ai-exam 업무 흐름</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 레이아웃: 왼쪽 순서도(단계 열 + 보류 열), 오른쪽 상세 패널. 좁은 화면에서는 패널이 아래로 내려간다. */
+:root {
+  --bg: #f4f6f9;
+  --paper: #ffffff;
+  --ink: #18212d;
+  --muted: #5a6677;
+  --line: #d6dde6;
+  --axis: #7c8796;
+  --accent: #2a5bd7;
+  --hold: #c2410c;
+  --hold-soft: #fdeee6;
+  --resolve: #1f7a4d;
+  --review: #7a4fd0;
+  --role-admin: #2a5bd7;
+  --role-cand: #1f8a5b;
+  --role-sys: #6b7785;
+  --role-ai: #b5651d;
+  --role-grader: #7a4fd0;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10151c; --paper: #18202a; --ink: #e3e8ee; --muted: #9aa6b4; --line: #2c3644; --axis: #8a96a6;
+    --accent: #7ea2ff; --hold: #ff8a5c; --hold-soft: #3a2219; --resolve: #5cc995; --review: #b59bff;
+    --role-admin: #7ea2ff; --role-cand: #5cc995; --role-sys: #a3aebb; --role-ai: #f0a35e; --role-grader: #b59bff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10151c; --paper: #18202a; --ink: #e3e8ee; --muted: #9aa6b4; --line: #2c3644; --axis: #8a96a6;
+  --accent: #7ea2ff; --hold: #ff8a5c; --hold-soft: #3a2219; --resolve: #5cc995; --review: #b59bff;
+  --role-admin: #7ea2ff; --role-cand: #5cc995; --role-sys: #a3aebb; --role-ai: #f0a35e; --role-grader: #b59bff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6; padding-inline: 16px; padding-block: 0 48px; word-break: keep-all; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+header { padding-block: 32px 0; display: flex; flex-direction: column; gap: 8px; }
+h1 { margin: 0; font-size: clamp(24px, 4vw, 32px); letter-spacing: -0.01em; text-wrap: balance; }
+h2 { margin: 0; font-size: 18px; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 70ch; }
+.meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.sw.line { width: 22px; height: 0; border-top: 2px solid var(--axis); border-radius: 0; }
+.sw.hold { width: 22px; height: 0; border-top: 2px dashed var(--hold); border-radius: 0; }
+.sw.res { width: 22px; height: 0; border-top: 2px dashed var(--resolve); border-radius: 0; }
+.sw.rev { border: 2px solid var(--review); background: transparent; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button { font: inherit; font-size: 14px; cursor: pointer; border-radius: 6px; padding: 6px 12px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); }
+button:hover { border-color: var(--accent); }
+button:focus-visible, .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.anim-note { font-size: 12.5px; color: var(--muted); border: 1px dashed var(--line); border-radius: 6px; padding: 4px 10px; background: var(--paper); }
+.anim-note b { color: var(--ink); font-weight: 600; }
+.caption { font-size: 13px; color: var(--muted); min-height: 1.6em; }
+
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (min-width: 1100px) { .layout { grid-template-columns: minmax(0, 1fr) 360px; } }
+.chart { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; overflow-x: auto; min-width: 0; }
+.chart svg { display: block; width: 100%; min-width: 680px; height: auto; }
+
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (min-width: 1100px) { .panel { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 16px); max-height: calc(100vh - 32px); overflow-y: auto; } }
+.panel .kicker { font-family: var(--f-mono); font-size: 12px; color: var(--muted); letter-spacing: 0.04em; }
+.panel h2 { font-size: 19px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; font-weight: 500; }
+.panel dl { margin: 0; display: grid; grid-template-columns: 1fr; gap: 10px; }
+.panel dt { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.02em; }
+.panel dd { margin: 2px 0 0; }
+.panel ul { margin: 0; padding-left: 1.1em; }
+.panel li { margin-block: 2px; }
+.panel dd.hold { border-left: 3px solid var(--hold); background: var(--hold-soft); padding: 8px 10px; border-radius: 0 6px 6px 0; }
+.panel a.jump { color: var(--accent); cursor: pointer; text-decoration: underline; }
+code { font-family: var(--f-mono); font-size: 0.88em; background: var(--bg); padding: 0 4px; border-radius: 3px; overflow-wrap: anywhere; }
+
+/* svg */
+.node { cursor: pointer; }
+.node .box { fill: var(--paper); stroke: var(--line); stroke-width: 1.25; transition: stroke 0.15s; }
+.node:hover .box { stroke: var(--axis); }
+.node.selected .box { stroke: var(--accent); stroke-width: 2.5; }
+.node.review .box { stroke: var(--review); stroke-width: 2; }
+.node.review.selected .box { stroke: var(--accent); stroke-width: 2.5; }
+.node.hold .box { fill: var(--hold-soft); stroke: var(--hold); stroke-dasharray: 5 4; }
+.node.active .box { stroke: var(--accent); stroke-width: 3; }
+.t-title { font-size: 14px; font-weight: 600; fill: var(--ink); }
+.t-sub { font-size: 11.5px; fill: var(--muted); }
+.t-num { font-family: var(--f-mono); font-size: 12px; fill: var(--muted); }
+.t-badge { font-size: 10.5px; font-weight: 600; fill: var(--review); }
+.t-edge { font-size: 11px; fill: var(--muted); }
+.t-edge.h { fill: var(--hold); }
+.t-edge.r { fill: var(--resolve); }
+.edge { fill: none; stroke: var(--axis); stroke-width: 1.4; }
+.edge.h { stroke: var(--hold); stroke-dasharray: 5 4; }
+.edge.r { stroke: var(--resolve); stroke-dasharray: 5 4; }
+.edge.h.flow { animation: dash 0.8s linear infinite; }
+@keyframes dash { to { stroke-dashoffset: -18; } }
+.token { fill: var(--accent); transition: cy 0.6s ease, opacity 0.3s; }
+@media (prefers-reduced-motion: reduce) { .edge.h.flow { animation: none; } .token { transition: none; } .node .box { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="meta">ai-exam · 업무 흐름 · 2026-10-14 기준</span>
+    <h1>시험 생성부터 교육 결정까지, 누가 무엇을 넘기나</h1>
+    <p class="lede">PRD와 실제 입력 형식(대상자 엑셀 열, 안내문 변수, 시험 열기 조건, 리포트 공개 조건)을 코드에서 확인해 그렸습니다. 상자를 누르면 오른쪽(좁은 화면에서는 아래)에 담당, 입력, 할 일, 결과, 다음 담당, 보류 조건이 나옵니다.</p>
+  </header>
+
+  <div class="legend" aria-label="범례">
+    <span><i class="sw" style="background:var(--role-admin)"></i>교육 담당자</span>
+    <span><i class="sw" style="background:var(--role-cand)"></i>응시자</span>
+    <span><i class="sw" style="background:var(--role-sys)"></i>시스템(규칙)</span>
+    <span><i class="sw" style="background:var(--role-ai)"></i>Claude(AI)</span>
+    <span><i class="sw" style="background:var(--role-grader)"></i>채점 담당자</span>
+    <span><i class="sw rev"></i>사람 검수 단계</span>
+    <span><i class="sw line"></i>정상 흐름</span>
+    <span><i class="sw hold"></i>누락·오류 시 보류</span>
+    <span><i class="sw res"></i>보완 후 재개</span>
+  </div>
+
+  <div class="controls">
+    <button id="play" type="button" aria-pressed="false">흐름 재생</button>
+    <span class="anim-note"><b>애니메이션은 설계 설명용입니다.</b> 단계 순서만 보여 주며, 실제 처리 시간이나 동시 처리는 재현하지 않습니다.</span>
+  </div>
+  <p class="caption" id="caption" aria-live="polite"></p>
+
+  <div class="layout">
+    <div class="chart">
+      <svg id="flow" viewBox="0 0 760 1200" role="group" aria-label="ai-exam 업무 순서도: 11단계와 보류 경로"></svg>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  const ROLES = {
+    admin: { name: "교육 담당자", color: "var(--role-admin)" },
+    cand: { name: "응시자", color: "var(--role-cand)" },
+    sys: { name: "시스템(규칙)", color: "var(--role-sys)" },
+    ai: { name: "Claude(AI)", color: "var(--role-ai)" },
+    grader: { name: "채점 담당자", color: "var(--role-grader)" },
+  };
+
+  // 단계: 담당 / 입력 / 할 일 / 결과 / 다음 담당 / 보류 조건
+  const STEPS = [
+    { id: "s1", title: "시험 만들기", role: "admin",
+      input: ["시험명, 응시 기간(한국 시간)", "제한 시간(기본 40분)", "결과 공개 여부, 응시 후 설문 여부, 안내 문구"],
+      task: ["시험 생성 마법사의 기본 설정과 응시 사이트 설정을 저장"],
+      output: ["초안 상태의 시험 (새 시험은 문항 세트 NEWHIRE-AI-v2)"],
+      next: "교육 담당자 · 대상자·안내문 등록",
+      holdText: ["입력값이 비었거나 형식이 틀리면 저장되지 않음", "응시가 시작된 시험은 제한 시간 변경 불가"] },
+    { id: "s2", title: "대상자·안내문 등록", role: "admin", hold: "h2",
+      input: ["대상자 엑셀(.xlsx, 2MB·2,000명 이하): 사번*, 이름*, 이메일, 휴대폰, 소속, 기수, 입사일 (*필수)", "안내문 변수: $이름$ $시험명$ $응시 시작$ $응시 기한$ $제한 시간$ $응시 URL$"],
+      task: ["양식 업로드 → 행별 오류 미리보기 → 저장 (사번 기준 갱신, 기존 링크 유지)", "메일·문자 안내문 작성, 응시자별 미리보기, 문자 바이트 확인"],
+      output: ["대상자별 개인 응시 링크", "응시자별로 치환된 안내문 CSV"],
+      next: "교육 담당자 · 시험 열기 검수" },
+    { id: "s3", title: "시험 열기 검수", role: "admin", review: true, hold: "h3",
+      input: ["저장된 대상자 명단, 안내문, 응시 기간"],
+      task: ["열기 전 점검을 통과하면 시험을 열고, 안내문 CSV로 링크를 직접 발송"],
+      output: ["열린 시험, 응시자에게 전달된 링크"],
+      next: "응시자 · 응시" },
+    { id: "s4", title: "응시", role: "cand", hold: "h4",
+      input: ["개인 응시 링크 (로그인 없음)", "자기평가 8 · 객관식 24 · 서술형 3"],
+      task: ["안내·동의 → 제한 시간 안에 응시 → 바뀐 답만 자동 저장 → 제출 (마감 시 자동 제출)"],
+      output: ["응답, 문항별 응답 시간, 서술형 붙여넣기 여부"],
+      next: "시스템 · 자동 채점" },
+    { id: "s5", title: "자동 채점·신호 표시", role: "sys",
+      input: ["응답, 시험의 문항 세트 버전에 맞는 정답 키", "문항별 응답 시간"],
+      task: ["객관식 채점, 지식 점수 계산", "응답 신뢰도 신호 5종 확인 (판정하지 않고 표시만)", "빈 서술형은 미응답으로 0점 처리 (AI 호출 없음)"],
+      output: ["결과 '채점 중', 신뢰도 '특이사항 없음' 또는 '추가 검토 필요'"],
+      next: "Claude · AI 1차 채점",
+      holdText: ["보류 없음. 신호는 판정이 아니라 채점 담당자가 볼 표시"] },
+    { id: "s6", title: "AI 1차 채점", role: "ai", hold: "h6",
+      input: ["서술형 답안 텍스트만 (이름·사번 제외)", "문항별 채점 기준표 (4기준 × 1~4점)"],
+      task: ["기준별 점수, 판단 이유, 근거가 된 답안 문장 인용"],
+      output: ["AI 채점 초안 (프롬프트 버전 함께 저장)", "답안에 없는 인용은 근거에서 제외하고 경고 표시"],
+      next: "채점 담당자 · 서술형 확정" },
+    { id: "s7", title: "서술형 확정", role: "grader", review: true, hold: "h7",
+      input: ["답안 원문, AI 초안과 인용, 신뢰도 신호", "미응답 문항은 0점 확정 안내"],
+      task: ["기준별 점수를 고르고 확정", "AI와 다른 점수면 사유 작성"],
+      output: ["확정 점수, 3문항 모두 확정 시 결과 '채점 완료' (총점, 등급, 유형)", "채점 완료 결과가 결과 목록·문항 분석·BI 내보내기에 들어감 (대상자의 소속·기수 포함)"],
+      next: "Claude · 성장 피드백 초안 / 교육 담당자 · 분석·교육 결정 (채점 완료 결과)" },
+    { id: "s8", title: "성장 피드백 초안", role: "ai", hold: "h8",
+      input: ["확정 점수, 기준별 수준, 자기평가 차이 (이름·사번 제외)", "미응답 문항은 '미응답'으로만 전달"],
+      task: ["요약 2~3문장과 다음 업무에서 해 볼 행동 3개 작성"],
+      output: ["피드백 초안 (공개 전)"],
+      next: "채점 담당자 · 피드백 승인" },
+    { id: "s9", title: "피드백 승인", role: "grader", review: true, hold: "h9",
+      input: ["피드백 초안, 결과 리포트"],
+      task: ["사실과 다른 문장을 고치고 승인"],
+      output: ["응시자 리포트에 피드백 공개"],
+      next: "응시자 · 리포트 확인·설문" },
+    { id: "s10", title: "리포트 확인·설문", role: "cand", hold: "h10",
+      input: ["같은 응시 링크"],
+      task: ["등급, 유형, 동기 분포, 자기평가 vs 실제, 피드백, 복습할 장 확인", "응시 후 설문 (켜 둔 시험만)"],
+      output: ["설문 응답 (난이도·시간·이해도·관련성·편의, 오류 신고, 자유 의견)"],
+      next: "교육 담당자 · 분석·교육 결정 (설문 응답만, 선택)" },
+    { id: "s11", title: "분석·교육 결정", role: "admin", review: true, hold: "h11",
+      input: ["결과 목록, 문항 분석 ← 7. 서술형 확정의 채점 완료 결과", "BI 내보내기 CSV 3개 (응시자, 역량 점수, 역량 · 해시 ID) ← 같은 채점 완료 결과", "설문 결과 ← 10. 리포트 확인·설문 (설문을 켠 시험만)"],
+      task: ["문항 개선 후보 정리", "Power BI로 부서 × 역량 히트맵, 교육 우선순위 확인"],
+      output: ["부서별 교육 우선순위, 다음 문항 세트 수정안"],
+      next: "교육 담당자 · 다음 시험 만들기 (1단계로)" },
+  ];
+
+  // 보류: 누락·오류가 생기면 멈추는 곳, 담당, 해소 방법, 돌아갈 단계
+  const HOLDS = [
+    { id: "h2", from: "s2", back: "s2", title: "대상자 파일 보류", sub: "필수 열 누락 · 형식 오류", owner: "admin",
+      when: ["사번 또는 이름 열이 없음", ".xlsx가 아니거나 2MB 초과, 2,000명 초과", "행별 오류(빈 사번, 형식이 틀린 날짜 등)"],
+      state: "저장되지 않음. 기존 대상자와 링크는 그대로", resolve: "양식을 내려받아 고친 뒤 다시 업로드" },
+    { id: "h3", from: "s3", back: "s3", title: "열기 보류", sub: "대상자 · 안내문 · 기간", owner: "admin",
+      when: ["대상자가 0명", "저장된 안내문(메일 또는 문자)이 없음", "응시 마감 일시가 이미 지남"],
+      state: "시험이 초안으로 남고 링크가 동작하지 않음", resolve: "빠진 항목을 채운 뒤 다시 열기" },
+    { id: "h4", from: "s4", back: "s4", title: "응시 보류", sub: "기간 밖 · 오류 시 재응시", owner: "admin",
+      when: ["응시 기간 밖에 접속", "마감 + 60초가 지난 저장 요청", "링크 공유 문제 등으로 응시를 망침"],
+      state: "응답이 저장되지 않음. 망친 응시는 담당자 판단 전까지 그대로", resolve: "교육 담당자가 사유를 적고 재응시 허용 (첫 기록은 보관, 필요하면 개인 마감 지정). 사유 누락 시 허용 불가" },
+    { id: "h6", from: "s6", back: "s7", title: "AI 채점 보류", sub: "API 실패 · 키 없음", owner: "grader",
+      when: ["Claude API 호출 실패 또는 API 키 없음"],
+      state: "해당 문항 AI 초안 없음, 결과는 '채점 중'", resolve: "채점 담당자가 'AI 다시 채점'을 누르거나 기준표로 직접 채점" },
+    { id: "h7", from: "s7", back: "s7", title: "확정 보류", sub: "사유 누락 · 미확정 문항", owner: "grader",
+      when: ["AI와 다른 점수인데 사유가 비어 있음", "3문항 중 확정 안 된 문항이 남음", "신뢰도 '추가 검토 필요' 표시"],
+      state: "확정 버튼이 막히거나 결과가 '채점 중'으로 남음", resolve: "사유를 적고 확정, 남은 문항 확정. 추가 검토 표시는 답안을 보고 담당자가 판단" },
+    { id: "h8", from: "s8", back: "s9", title: "피드백 초안 보류", sub: "API 실패 · 키 없음", owner: "grader",
+      when: ["Claude API 호출 실패 또는 API 키 없음"],
+      state: "피드백 없음, 리포트에는 '준비 중' 표시", resolve: "채점 담당자가 다시 생성하거나 직접 작성" },
+    { id: "h9", from: "s9", back: "s9", title: "공개 보류", sub: "승인 전 · 점수 변경", owner: "grader",
+      when: ["아직 승인하지 않음", "승인 뒤 확정 점수가 바뀜"],
+      state: "응시자에게 피드백이 보이지 않음. 점수 변경 시 '다시 생성 필요' 표시", resolve: "초안을 고쳐 (다시) 승인" },
+    { id: "h10", from: "s10", back: null, title: "리포트 표시 보류", sub: "공개 꺼짐 · 5명 미만", owner: "sys",
+      when: ["시험의 결과 공개가 꺼져 있음", "채점 완료된 동기가 5명 미만"],
+      state: "리포트 대신 제출 완료 화면, 또는 동기 비교만 숨김", resolve: "규칙에 따른 표시. 공개 여부는 교육 담당자가 시험 설정에서 결정" },
+    { id: "h11", from: "s11", back: "s11", title: "해석 보류", sub: "표본 부족 · 제외 대상", owner: "admin",
+      when: ["분석 인원 10명 미만", "부서·기수 집단이 5명 미만", "리허설(P-000)·가상 응시자(SIM-)가 섞임"],
+      state: "통계는 참고용 표시, 5명 미만 집단은 빈칸", resolve: "제외할 사번을 넣어 다시 보기. 결론 대신 다음 파일럿에서 확인할 가설로 기록" },
+  ];
+
+  // ── 배치 ──
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("flow");
+  const SX = 40, SW = 300, SH = 68, HX = 452, HW = 284, HH = 58, GAP = 104, TOP = 24, MX = SX + SW / 2;
+  const cy = i => TOP + SH / 2 + i * GAP;
+  const pos = {};
+  STEPS.forEach((s, i) => { pos[s.id] = { i, cy: cy(i) }; });
+  const H = cy(STEPS.length - 1) + SH / 2 + 24;
+  svg.setAttribute("viewBox", `0 0 760 ${H}`);
+
+  const el = (tag, attrs = {}, parent = svg) => {
+    const n = document.createElementNS(NS, tag);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+    parent.appendChild(n);
+    return n;
+  };
+  const txt = (parent, x, y, cls, words, anchor = "start") => {
+    const t = el("text", { x, y, class: cls, "text-anchor": anchor }, parent);
+    t.textContent = words;
+    return t;
+  };
+
+  const defs = el("defs");
+  [["a-main", "var(--axis)"], ["a-hold", "var(--hold)"], ["a-res", "var(--resolve)"]].forEach(([id, c]) => {
+    const m = el("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0 0L10 5L0 10z", fill: c }, m);
+  });
+
+  const edges = el("g", { "aria-hidden": "true" });
+  const holdEdges = {};
+  // 정상 흐름
+  STEPS.slice(0, -1).forEach((s, i) => {
+    el("path", { d: `M${MX} ${cy(i) + SH / 2}V${cy(i + 1) - SH / 2 - 2}`, class: "edge", "marker-end": "url(#a-main)" }, edges);
+  });
+  // 7 → 11 인계: 교육 결정 자료(채점 완료 결과)는 응시자의 리포트 확인을 거치지 않고 바로 넘어간다
+  {
+    const a = pos.s7.cy, b = pos.s11.cy, lane = 12;
+    el("path", { d: `M${SX} ${a}H${lane}V${b}H${SX - 2}`, class: "edge", "marker-end": "url(#a-main)" }, edges);
+    const ly = (pos.s8.cy + pos.s10.cy) / 2; // 통로를 따라 세로로 써서 10→11 라벨과 겹치지 않게 한다
+    txt(edges, 30, ly, "t-edge", "7단계 채점 완료 결과 → 결과 목록·BI CSV", "middle").setAttribute("transform", `rotate(-90 30 ${ly})`);
+    txt(edges, MX + 10, pos.s10.cy + SH / 2 + 22, "t-edge", "설문 응답(선택)");
+  }
+  // 보류 경로
+  HOLDS.forEach(h => {
+    const p = pos[h.from];
+    const out = el("path", { d: `M${SX + SW} ${p.cy - 10}H${HX - 2}`, class: "edge h", "marker-end": "url(#a-hold)" }, edges);
+    holdEdges[h.from] = out;
+    txt(edges, (SX + SW + HX) / 2, p.cy - 16, "t-edge h", "누락·오류", "middle");
+    if (!h.back) return;
+    const t = pos[h.back];
+    if (h.back === h.from) {
+      el("path", { d: `M${HX} ${p.cy + 14}H${SX + SW + 2}`, class: "edge r", "marker-end": "url(#a-res)" }, edges);
+      txt(edges, (SX + SW + HX) / 2, p.cy + 30, "t-edge r", "보완 후 재개", "middle");
+    } else {
+      const lane = SX + SW + 26;
+      el("path", { d: `M${HX} ${p.cy + 14}H${lane}V${t.cy - 26}H${SX + SW + 2}`, class: "edge r", "marker-end": "url(#a-res)" }, edges);
+      txt(edges, lane + 6, (p.cy + t.cy) / 2 + 4, "t-edge r", "사람이 이어받음");
+    }
+  });
+
+  // 상자
+  const nodes = {};
+  const makeNode = (id, x, y, w, h, kind, data) => {
+    const g = el("g", { class: `node ${kind}${data.review ? " review" : ""}`, tabindex: 0, role: "button",
+      "aria-label": `${data.title}, ${kind === "hold" ? "보류" : ROLES[data.role].name}. 눌러서 자세히 보기` });
+    el("rect", { class: "box", x, y, width: w, height: h, rx: 8 }, g);
+    nodes[id] = g;
+    g.addEventListener("click", () => select(id));
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(id); } });
+    return g;
+  };
+  STEPS.forEach((s, i) => {
+    const y = cy(i) - SH / 2;
+    const g = makeNode(s.id, SX, y, SW, SH, "step", s);
+    el("rect", { x: SX, y, width: 6, height: SH, rx: 3, fill: ROLES[s.role].color }, g);
+    txt(g, SX + 18, y + 26, "t-num", String(i + 1).padStart(2, "0"));
+    txt(g, SX + 44, y + 26, "t-title", s.title);
+    txt(g, SX + 44, y + 48, "t-sub", ROLES[s.role].name);
+    if (s.review) {
+      el("rect", { x: SX + SW - 72, y: y + 12, width: 60, height: 20, rx: 10, fill: "none", stroke: "var(--review)", "stroke-width": 1.25 }, g);
+      txt(g, SX + SW - 42, y + 26, "t-badge", "사람 검수", "middle");
+    }
+  });
+  HOLDS.forEach(h => {
+    const y = pos[h.from].cy - HH / 2;
+    const g = makeNode(h.id, HX, y, HW, HH, "hold", { ...h, role: h.owner });
+    txt(g, HX + 14, y + 23, "t-title", h.title);
+    txt(g, HX + 14, y + 43, "t-sub", h.sub);
+  });
+
+  // ── 상세 패널 ──
+  const panel = document.getElementById("panel");
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const list = xs => `<ul>${xs.map(x => `<li>${esc(x)}</li>`).join("")}</ul>`;
+  const role = r => `<span class="chip" style="color:${ROLES[r].color}">${ROLES[r].name}</span>`;
+  const stepName = id => { const s = STEPS.find(x => x.id === id); return `${STEPS.indexOf(s) + 1}. ${s.title}`; };
+  const jump = id => `<a class="jump" data-go="${id}" role="button" tabindex="0">${esc(id.startsWith("h") ? HOLDS.find(h => h.id === id).title : stepName(id))}</a>`;
+
+  function render(id) {
+    const s = STEPS.find(x => x.id === id);
+    if (s) {
+      const h = HOLDS.find(x => x.id === s.hold);
+      const holdDd = h
+        ? `${list(h.when)}<p style="margin-top:6px">보류 경로: ${jump(h.id)}</p>`
+        : list(s.holdText || ["없음"]);
+      panel.innerHTML = `
+        <span class="kicker">단계 ${STEPS.indexOf(s) + 1} / ${STEPS.length}</span>
+        <h2>${esc(s.title)}</h2>
+        <div class="chips">${role(s.role)}${s.review ? '<span class="chip" style="color:var(--review)">사람 검수</span>' : ""}</div>
+        <dl>
+          <div><dt>담당</dt><dd>${ROLES[s.role].name}</dd></div>
+          <div><dt>입력</dt><dd>${list(s.input)}</dd></div>
+          <div><dt>할 일</dt><dd>${list(s.task)}</dd></div>
+          <div><dt>결과</dt><dd>${list(s.output)}</dd></div>
+          <div><dt>다음 담당</dt><dd>${esc(s.next)}</dd></div>
+          <div><dt>보류 조건</dt><dd class="hold">${holdDd}</dd></div>
+        </dl>`;
+    } else {
+      const h = HOLDS.find(x => x.id === id);
+      panel.innerHTML = `
+        <span class="kicker">보류 경로 · ${esc(stepName(h.from))}에서</span>
+        <h2>${esc(h.title)}</h2>
+        <div class="chips"><span class="chip" style="color:var(--hold)">누락·오류 시 보류</span>${role(h.owner)}</div>
+        <dl>
+          <div><dt>담당</dt><dd>${ROLES[h.owner].name}</dd></div>
+          <div><dt>입력 (보류가 걸리는 경우)</dt><dd class="hold">${list(h.when)}</dd></div>
+          <div><dt>보류 중 상태</dt><dd>${esc(h.state)}</dd></div>
+          <div><dt>할 일 (해소 방법)</dt><dd>${esc(h.resolve)}</dd></div>
+          <div><dt>다음 담당 · 돌아갈 단계</dt><dd>${h.back ? jump(h.back) : "돌아가지 않음 (표시 규칙)"}</dd></div>
+        </dl>`;
+    }
+    panel.querySelectorAll("[data-go]").forEach(a => {
+      const go = () => select(a.dataset.go, true);
+      a.addEventListener("click", go);
+      a.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+    });
+  }
+
+  let current = null;
+  function select(id, focusNode = false) {
+    if (current) nodes[current].classList.remove("selected");
+    current = id;
+    nodes[id].classList.add("selected");
+    render(id);
+    if (focusNode) nodes[id].focus({ preventScroll: false });
+    if (window.matchMedia("(max-width: 1099px)").matches && !focusNode) panel.scrollIntoView({ behavior: reduce() ? "auto" : "smooth", block: "nearest" });
+    try { localStorage.setItem("ai-exam-workflow", id); } catch (e) { /* 저장 불가 환경 */ }
+  }
+  const reduce = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  let start = "s1";
+  try { const v = localStorage.getItem("ai-exam-workflow"); if (v && nodes[v]) start = v; } catch (e) { /* 무시 */ }
+  current = start; nodes[start].classList.add("selected"); render(start);
+
+  // ── 설계 설명용 애니메이션: 정상 흐름을 따라 점이 이동하고, 보류가 있는 단계에서는 보류 화살표가 움직인다 ──
+  const token = el("circle", { class: "token", r: 7, cx: SX - 14, cy: cy(0), opacity: 0, "aria-hidden": "true" });
+  const caption = document.getElementById("caption");
+  const playBtn = document.getElementById("play");
+  let playing = false, timer = null, idx = 0;
+
+  function showStep(i) {
+    STEPS.forEach(s => { nodes[s.id].classList.remove("active"); holdEdges[s.id]?.classList.remove("flow"); });
+    const s = STEPS[i];
+    nodes[s.id].classList.add("active");
+    holdEdges[s.id]?.classList.add("flow");
+    token.setAttribute("cy", cy(i));
+    token.setAttribute("opacity", 1);
+    caption.textContent = `설계 설명용 애니메이션 · ${i + 1}. ${s.title} (${ROLES[s.role].name})${s.hold ? " · 누락·오류 시 보류 경로로 빠짐" : ""}`;
+  }
+  function stop() {
+    playing = false; clearTimeout(timer);
+    playBtn.textContent = "흐름 재생"; playBtn.setAttribute("aria-pressed", "false");
+    STEPS.forEach(s => { nodes[s.id].classList.remove("active"); holdEdges[s.id]?.classList.remove("flow"); });
+    token.setAttribute("opacity", 0);
+    caption.textContent = "";
+  }
+  function tick() {
+    if (!playing) return;
+    showStep(idx);
+    idx += 1;
+    if (idx >= STEPS.length) { timer = setTimeout(stop, 1600); return; }
+    timer = setTimeout(tick, reduce() ? 2200 : 1400);
+  }
+  playBtn.addEventListener("click", () => {
+    if (playing) return stop();
+    playing = true; idx = 0;
+    playBtn.textContent = "정지"; playBtn.setAttribute("aria-pressed", "true");
+    tick();
+  });
+})();
+</script>
+</body>
+</html>
