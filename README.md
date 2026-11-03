@@ -165,7 +165,7 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 | `ANTHROPIC_API_KEY` | 서술형 AI 채점·성장 피드백 |
 | `APP_URL` | 응시 링크·안내문에 쓸 주소 |
 | `CRON_SECRET` | (권장) `/api/health`·`/api/cron/daily` 보호용 임의 문자열. Vercel Cron 이 자동으로 붙여 부른다 |
-| `DEMO_RESET_CANDIDATE_IDS` | (선택) 매일 자정에 응시 기록을 지울 데모 대상자의 `candidates.id`, 쉼표로 구분 |
+| `DEMO_RESET_CANDIDATE_IDS` | (선택) 매일 자정에 응시 기록을 지울 데모 대상자의 `candidates.id`, 쉼표로 구분. 없으면 운영 데모의 박서연, 빈 값이면 끔 |
 
 ### 매일 자정 작업 (Vercel Cron)
 `vercel.json` 의 Vercel Cron 이 매일 00:00(KST) `/api/cron/daily` 를 부른다. Vercel 무료 플랜은 실행 시각이 그 1시간 안에서 달라질 수 있다.
