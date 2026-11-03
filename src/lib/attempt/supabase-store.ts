@@ -471,6 +471,25 @@ export function createSupabaseStore(url: string, key: string): ExamStore & Gradi
       });
     },
 
+    async clearDemoAttempts(candidateIds, startedBefore) {
+      if (candidateIds.length === 0) return 0;
+      // 찾은 뒤 id 로 지운다 (PostgREST 는 DELETE 에 or= 와 select= 를 함께 쓰면 오류를 낸다)
+      const q = [
+        `candidate_id=in.(${candidateIds.map(encodeURIComponent).join(",")})`,
+        // 시각에 . 과 : 가 들어 있어 큰따옴표로 감싼다 (PostgREST 논리 연산 안의 예약 문자)
+        `or=(status.neq.in_progress,started_at.lt.${encodeURIComponent(`"${startedBefore}"`)})`,
+        "select=id",
+      ].join("&");
+      const found = await rest<{ id: string }[]>(`/attempts?${q}`);
+      if (found.length === 0) return 0;
+      // 응답·채점·결과·설문은 on delete cascade 로 함께 지워진다
+      const rows = await rest<{ id: string }[]>(`/attempts?id=in.(${found.map((r) => r.id).join(",")})&select=id`, {
+        method: "DELETE",
+        prefer: "return=representation",
+      });
+      return rows.length;
+    },
+
     async clearArchiveScores(examId, candidateId, archiveId) {
       const rows = await rest<{ id: string }[]>(
         `/attempt_archives?id=eq.${encodeURIComponent(archiveId)}&candidate_id=eq.${encodeURIComponent(candidateId)}&select=id,candidate:candidates!inner(exam_id)&candidate.exam_id=eq.${encodeURIComponent(examId)}`,

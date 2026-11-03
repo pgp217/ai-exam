@@ -161,4 +161,25 @@ describe("memory store", () => {
     expect(s.attempt?.status).toBe("submitted");
     expect(s.responses).toEqual([{ item_id: "E1", answer: { text: "xy" }, response_ms: 2, pasted: true }]);
   });
+
+  it("clears demo attempts: submitted ones and abandoned in-progress ones only", async () => {
+    const store = createMemoryStore(demoDb(T0, { simulated: 3 }));
+    const old = new Date(T0 - 5 * 3600_000).toISOString();
+    store.db.attempts.push(
+      attempt({ id: "a2", candidate_id: "demo-c2", status: "in_progress", started_at: old }), // 버려진 응시
+      attempt({ id: "a3", candidate_id: "demo-c3", status: "submitted" }),
+      attempt({ id: "a1", candidate_id: "demo-c1", status: "in_progress" }), // 지금 풀고 있는 응시
+    );
+    store.db.responses.set("a3", [{ id: "r3", item_id: "E1", answer: { text: "x" }, response_ms: 1, pasted: false }]);
+    store.db.surveys.set("a3", { clarity: 5, difficulty: 3, error_report: null, created_at: old } as never);
+    const sims = store.db.attempts.filter((a) => a.candidate_id.startsWith("sim")).length;
+
+    const cutoff = new Date(T0 - 3 * 3600_000).toISOString();
+    expect(await store.clearDemoAttempts(["demo-c1", "demo-c2", "demo-c3"], cutoff)).toBe(2);
+    expect(store.db.attempts.map((a) => a.id)).toContain("a1");
+    expect(store.db.attempts.some((a) => a.id === "a2" || a.id === "a3")).toBe(false);
+    expect(store.db.responses.has("a3") || store.db.surveys.has("a3")).toBe(false);
+    expect(store.db.attempts.filter((a) => a.candidate_id.startsWith("sim"))).toHaveLength(sims); // 다른 응시자는 그대로
+    expect(await store.clearDemoAttempts([], cutoff)).toBe(0);
+  });
 });
