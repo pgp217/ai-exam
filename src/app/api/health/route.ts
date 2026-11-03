@@ -1,13 +1,10 @@
-// 상태 확인: DB 에 가벼운 조회를 한 번 한다. Vercel Cron 이 하루 한 번 불러
-// Supabase 무료 플랜의 비활성 일시정지(7일)를 막는다. 응시자 정보는 돌려주지 않는다.
+// 상태 확인: DB 에 가벼운 조회를 한 번 한다. 응시자 정보는 돌려주지 않는다.
+// 매일 부르는 일은 /api/cron/daily 가 한다 (같은 조회 + 데모 초기화).
 import { getStore } from "@/lib/attempt/store";
+import { cronAuthorized } from "@/lib/cron/auth";
 
 export async function GET(req: Request) {
-  // CRON_SECRET 을 지정하면 Vercel Cron 이 Authorization: Bearer <값> 을 붙여 부른다. 그 밖의 호출은 막는다.
-  const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
-    return Response.json({ ok: false }, { status: 401 });
-  }
+  if (!cronAuthorized(req)) return Response.json({ ok: false }, { status: 401 });
   try {
     await getStore().ping();
     return Response.json({ ok: true, at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });

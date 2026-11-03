@@ -131,6 +131,18 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
   };
   const info = (c: Candidate): CandidateInfo => ({ name: c.name, employee_no: c.employee_no, department: c.department, cohort: c.cohort });
 
+  /** 응시와 딸린 응답·채점·결과·설문을 지운다 (Supabase 의 on delete cascade 와 같은 범위) */
+  const dropAttempt = (attemptId: string) => {
+    const ids = new Set((db.responses.get(attemptId) ?? []).map((r) => r.id));
+    db.attempts = db.attempts.filter((x) => x.id !== attemptId);
+    db.responses.delete(attemptId);
+    db.results.delete(attemptId);
+    db.reliability.delete(attemptId);
+    db.surveys.delete(attemptId);
+    db.aiGradings = db.aiGradings.filter((g) => !ids.has(g.response_id));
+    db.finals = db.finals.filter((f) => !ids.has(f.response_id));
+  };
+
   return {
     db,
 
@@ -453,16 +465,17 @@ export function createMemoryStore(db: MemoryDb = demoDb()): ExamStore & GradingS
           survey: db.surveys.get(a.id) ?? null,
         }),
       });
-      const ids = new Set(responses.map((r) => r.id));
-      db.attempts = db.attempts.filter((x) => x.id !== a.id);
-      db.responses.delete(a.id);
-      db.results.delete(a.id);
-      db.reliability.delete(a.id);
-      db.surveys.delete(a.id);
-      db.aiGradings = db.aiGradings.filter((g) => !ids.has(g.response_id));
-      db.finals = db.finals.filter((f) => !ids.has(f.response_id));
+      dropAttempt(a.id);
       c.retake_until = input.retakeUntil;
       return true;
+    },
+
+    async clearDemoAttempts(candidateIds, startedBefore) {
+      const targets = db.attempts.filter(
+        (a) => candidateIds.includes(a.candidate_id) && (a.status !== "in_progress" || a.started_at < startedBefore),
+      );
+      targets.forEach((a) => dropAttempt(a.id));
+      return targets.length;
     },
 
     async clearArchiveScores(examId, candidateId, archiveId) {

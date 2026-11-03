@@ -315,6 +315,11 @@ export interface ExamAdminStore {
   deleteCandidate(examId: string, candidateId: string): Promise<boolean>;
   /** 이전 응시를 보관하고 지워 같은 링크로 다시 응시하게 한다. 응시 기록이 없으면 false */
   resetAttempt(examId: string, candidateId: string, input: RetakeInput): Promise<boolean>;
+  /**
+   * 데모 대상자의 응시를 보관 없이 지워 같은 링크로 처음부터 다시 응시하게 한다 (매일 자정 cron).
+   * 응시 중인 기록은 startedBefore 이전에 시작한(버려진) 것만 지운다. 지운 응시 수를 돌려준다.
+   */
+  clearDemoAttempts(candidateIds: string[], startedBefore: string): Promise<number>;
   /** 보관본의 AI 채점·확정 점수·결과만 지운다 (응답 원문·사유는 남김). 없거나 이미 지웠으면 false */
   clearArchiveScores(examId: string, candidateId: string, archiveId: string): Promise<boolean>;
   getNotices(examId: string): Promise<NoticeTemplate[]>;

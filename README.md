@@ -164,10 +164,14 @@ Supabase 서버 키(`SUPABASE_SERVICE_ROLE_KEY` 또는 `SUPABASE_SECRET_KEY`)가
 | `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 Secret key. 절대 `NEXT_PUBLIC_` 을 붙이지 않는다 |
 | `ANTHROPIC_API_KEY` | 서술형 AI 채점·성장 피드백 |
 | `APP_URL` | 응시 링크·안내문에 쓸 주소 |
-| `CRON_SECRET` | (권장) 상태 확인 `/api/health` 보호용 임의 문자열. Vercel Cron 이 자동으로 붙여 부른다 |
+| `CRON_SECRET` | (권장) `/api/health`·`/api/cron/daily` 보호용 임의 문자열. Vercel Cron 이 자동으로 붙여 부른다 |
+| `DEMO_RESET_CANDIDATE_IDS` | (선택) 매일 자정에 응시 기록을 지울 데모 대상자의 `candidates.id`, 쉼표로 구분 |
 
-### 일시정지 방지 (Supabase 무료 플랜)
-무료 플랜은 7일 넘게 활동이 적으면 프로젝트를 일시정지한다. `vercel.json` 의 Vercel Cron 이 매일 03:17(KST) `/api/health` 를 불러 DB 에 가벼운 조회(`exams` 1행 id)를 한 번 한다. 응시자 정보는 돌려주지 않는다. Supabase 가 활동 기준을 공개하지 않으므로, 배포 뒤 일시정지 경고 메일이 다시 오는지 확인한다.
+### 매일 자정 작업 (Vercel Cron)
+`vercel.json` 의 Vercel Cron 이 매일 00:00(KST) `/api/cron/daily` 를 부른다. Vercel 무료 플랜은 실행 시각이 그 1시간 안에서 달라질 수 있다.
+
+- **일시정지 방지:** Supabase 무료 플랜은 7일 넘게 활동이 적으면 프로젝트를 일시정지한다. DB 에 가벼운 조회(`exams` 1행 id)를 한 번 한다. Supabase 가 활동 기준을 공개하지 않으므로 경고 메일이 다시 오는지 확인한다.
+- **데모 초기화:** `DEMO_RESET_CANDIDATE_IDS` 의 대상자 응시를 보관 없이 지워(응답·채점·결과·설문 포함) 같은 링크로 처음부터 다시 응시하게 한다. 응시 중인 기록은 3시간보다 오래 전에 시작한 것만 지운다. 시험 응시 기간이 끝나면 초기화해도 응시할 수 없으니 데모 시험의 마감을 넉넉히 둔다.
 
 ### 비용 (Claude API, 실측)
 - 서술형 1차 채점: 응시자 1명(3문항)당 약 $0.15 (실제 운영 7건 중앙값, $0.12~0.18). `claude-opus-5-5` ($4 / $20 per MTok), 문항당 입력 약 2,100 · 출력 약 1,900 토큰(중앙값, 22회 호출). `ai_gradings.raw.usage` 에 호출별 토큰이 남는다
